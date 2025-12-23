@@ -23,12 +23,12 @@ interface FixCodeParams {
 interface GenerateImageParams {
     apiKey: string;
     prompt: string;
-    model: 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview';
+    model: 'gemini-2.5-flash-image';
     aspectRatio: '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
 }
 
 // 1. Basic Text Generation (Updated to 2.5 Flash)
-export const generateText = async ({ apiKey, model = 'gemini-2.5-flash', prompt, systemInstruction }: GenerateTextParams): Promise<string> => {
+export const generateText = async ({ apiKey, model = 'gemini-2.0-flash', prompt, systemInstruction }: GenerateTextParams): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
       model,
@@ -45,7 +45,7 @@ export const generateGroundingContent = async ({ apiKey, prompt, type }: Groundi
     const ai = new GoogleGenAI({ apiKey });
     
     // Per instructions: Search uses gemini-3-flash-preview, Maps uses gemini-2.5-flash
-    const modelName = type === 'search' ? 'gemini-3-flash-preview' : 'gemini-2.5-flash';
+    const modelName = type === 'search' ? 'gemini-2.0-flash' : 'gemini-2.5-flash';
     
     const tools = [];
     if (type === 'search') {
@@ -82,7 +82,7 @@ export const generateCodeFix = async ({ apiKey, code, instruction, fileName }: F
     const ai = new GoogleGenAI({ apiKey });
     
     // Use gemini-2.5-flash for coding (efficient & free tier eligible)
-    const model = 'gemini-2.5-flash';
+    const model = 'gemini-2.0-flash';
 
     const systemPrompt = `
     You are an expert Coding Assistant embedded in an IDE.
@@ -130,7 +130,7 @@ export const analyzeCodeHover = async (apiKey: string, codeSnippet: string, lang
     
     const ai = new GoogleGenAI({ apiKey });
     // Updated to gemini-2.5-flash for speed and reliability
-    const model = 'gemini-2.5-flash'; 
+    const model = 'gemini-2.0-flash'; 
 
     const prompt = `Analise este trecho de código (${language}) brevemente em Português.
     Explique a função e aponte bugs ou riscos de segurança se houver.
