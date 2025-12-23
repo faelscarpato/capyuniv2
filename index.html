@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>CapyUNI Codium</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.3.0/css/xterm.min.css" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              ide: {
+                bg: 'var(--ide-bg)',
+                sidebar: 'var(--ide-sidebar)',
+                activity: 'var(--ide-activity)',
+                panel: 'var(--ide-panel)',
+                accent: 'var(--ide-accent)',
+                secondary: 'var(--ide-secondary)',
+                text: 'var(--ide-text)',
+                muted: 'var(--ide-muted)',
+                border: 'var(--ide-border)',
+                input: 'var(--ide-input)',
+                overlay: 'rgba(0,0,0,0.6)',
+                hover: 'var(--ide-hover)'
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Base Theme Variables (Default Dark) */
+      :root {
+        --ide-bg: #1e1e1e; /* VS Code Default Dark Editor */
+        --ide-sidebar: #252526;
+        --ide-activity: #333333;
+        --ide-panel: #1e1e1e;
+        --ide-accent: #007acc; /* VS Code Blue */
+        --ide-secondary: #4ec9b0;
+        --ide-text: #cccccc;
+        --ide-muted: #858585;
+        --ide-border: #454545;
+        --ide-input: #3c3c3c;
+        --ide-hover: rgba(255, 255, 255, 0.1);
+        --ide-bg-image: none;
+      }
+
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent; 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--ide-border); 
+        border-radius: 5px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--ide-muted); 
+      }
+      
+      body {
+        background-color: var(--ide-bg);
+        background-image: var(--ide-bg-image);
+        background-attachment: fixed;
+        background-position: center top;
+        background-repeat: no-repeat;
+        color: var(--ide-text);
+        margin: 0;
+        overflow: hidden;
+        /* Prevent pull-to-refresh on mobile */
+        overscroll-behavior: none;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      }
+      .xterm-viewport {
+        background-color: transparent !important;
+      }
+    </style>
+
+<!-- gtag -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-3FFD7ZEBN1"></script>
+  <script>
+    window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)}
+    gtag('js', new Date()); gtag('config','G-3FFD7ZEBN1',{page_path:location.pathname});
+  </script>
+
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "zustand": "https://esm.sh/zustand@^5.0.9",
+    "@monaco-editor/react": "https://esm.sh/@monaco-editor/react@^4.7.0",
+    "idb-keyval": "https://esm.sh/idb-keyval@^6.2.2",
+    "lodash": "https://esm.sh/lodash@^4.17.21",
+    "@xterm/xterm": "https://esm.sh/@xterm/xterm@5.5.0",
+    "@xterm/addon-fit": "https://esm.sh/@xterm/addon-fit@0.10.0",
+    "jszip": "https://esm.sh/jszip@^3.10.1",
+    "file-saver": "https://esm.sh/file-saver@^2.0.5",
+    "marked": "https://esm.sh/marked@^12.0.0",
+    "diff": "https://esm.sh/diff@^5.2.0",
+    "@google/genai": "https://esm.sh/@google/genai@^1.34.0"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
