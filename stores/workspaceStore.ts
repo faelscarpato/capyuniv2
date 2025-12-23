@@ -278,7 +278,7 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>((set,
   },
 
   closeWorkspace: () => {
-      const root = { 'root': { id: 'root', name: 'root', type: 'folder', parentId: null, childrenIds: [], createdAt: Date.now() } };
+      const root: FileSystem = { 'root': { id: 'root', name: 'root', type: 'folder', parentId: null, childrenIds: [], createdAt: Date.now() } };
       set({ files: root, openTabs: [], activeTabId: null, expandedFolders: ['root'], unsavedChanges: new Set() });
       saveWorkspace(get());
   },

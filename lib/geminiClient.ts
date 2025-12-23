@@ -27,8 +27,8 @@ interface GenerateImageParams {
     aspectRatio: '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
 }
 
-// 1. Basic Text Generation (Legacy, kept for backward compat if needed)
-export const generateText = async ({ apiKey, model = 'gemini-2.0-flash', prompt, systemInstruction }: GenerateTextParams): Promise<string> => {
+// 1. Basic Text Generation (Updated to 2.5 Flash)
+export const generateText = async ({ apiKey, model = 'gemini-2.5-flash', prompt, systemInstruction }: GenerateTextParams): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey });
   const response = await ai.models.generateContent({
       model,
@@ -81,8 +81,8 @@ export const generateGroundingContent = async ({ apiKey, prompt, type }: Groundi
 export const generateCodeFix = async ({ apiKey, code, instruction, fileName }: FixCodeParams): Promise<string> => {
     const ai = new GoogleGenAI({ apiKey });
     
-    // Use a smart model for coding
-    const model = 'gemini-2.0-flash';
+    // Use gemini-2.5-flash for coding (efficient & free tier eligible)
+    const model = 'gemini-2.5-flash';
 
     const systemPrompt = `
     You are an expert Coding Assistant embedded in an IDE.
@@ -129,7 +129,8 @@ export const analyzeCodeHover = async (apiKey: string, codeSnippet: string, lang
     if (!apiKey) return "Configure sua API Key para ver a análise.";
     
     const ai = new GoogleGenAI({ apiKey });
-    const model = 'gemini-2.0-flash-lite-preview-02-05'; // Fast model
+    // Updated to gemini-2.5-flash for speed and reliability
+    const model = 'gemini-2.5-flash'; 
 
     const prompt = `Analise este trecho de código (${language}) brevemente em Português.
     Explique a função e aponte bugs ou riscos de segurança se houver.

@@ -121,7 +121,8 @@ export const CapyChat: React.FC = () => {
 
     try {
         const ai = new GoogleGenAI({ apiKey: apiKey });
-        const model = 'gemini-2.0-flash'; 
+        // Using Gemini 2.5 Flash as requested (Free Tier eligible)
+        const model = 'gemini-2.5-flash'; 
         
         // 1. Build Context
         // We do NOT rely on previous chat history for file state, as files change.
