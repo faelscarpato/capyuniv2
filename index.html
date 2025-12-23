@@ -110,8 +110,11 @@
   }
 }
 </script>
+    <!-- NOTE: Removed /index.css (it wasn't being emitted in build and could 404 in prod). -->
 </head>
   <body>
     <div id="root"></div>
-  </body>
+    <!-- Use a relative entry so Vite ALWAYS treats it as a build entry module. -->
+    <script type="module" src="./index.tsx"></script>
+</body>
 </html>
