@@ -2,12 +2,12 @@
   "name": "CapyUNI IDE",
   "short_name": "CapyUNI",
   "description": "CapyUNI IDE PWA - uma aplicação web progressiva para o IDE CapyUNI.",
-  "start_url": "https://capyuniv2.pages.dev/ ",
+  "start_url": "https://capyuniv2.pages.dev",
   "scope": ".",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#1e1e1e",
-  "theme_color": "#007acc",
+  "theme_color": "#1f1f1f",
   "icons": [
     {
       "src": "/pwa-192x192.png",
@@ -19,5 +19,11 @@
       "sizes": "512x512",
       "type": "image/png"
     }
+  ],
+  "lang": "pt",
+  "categories": [
+    "business",
+    "productivity",
+    "utilities"
   ]
 }
