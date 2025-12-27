@@ -3,6 +3,12 @@ import { MainLayout } from './components/layout/MainLayout';
 import { WelcomeScreen } from './components/layout/WelcomeScreen';
 import { useWorkspaceStore } from './stores/workspaceStore';
 import { useUIStore } from './stores/uiStore';
+import registerServiceWorker from './registerServiceWorker';
+
+// Após renderizar o React:
+
+
+
 
 const App: React.FC = () => {
   const { initialize } = useWorkspaceStore();
@@ -32,5 +38,7 @@ const App: React.FC = () => {
 
   return <MainLayout />;
 };
+
+registerServiceWorker();
 
 export default App;
