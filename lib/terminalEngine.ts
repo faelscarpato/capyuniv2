@@ -30,6 +30,14 @@ const getFullPath = (id: string, files: any): string => {
     return path || '/';
 };
 
+export const getTerminalCwdPath = (): string => {
+  const store = useWorkspaceStore.getState();
+  if (!store.files[cwdId]) {
+    cwdId = 'root';
+  }
+  return getFullPath(cwdId, store.files);
+};
+
 export const executeCommand = (input: string): string => {
   const args = input.trim().split(/\s+/);
   const cmd = args[0];

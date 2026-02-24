@@ -1,4 +1,4 @@
-import { GoogleGenAI, Type } from '@google/genai';
+import { GoogleGenAI } from '@google/genai';
 
 interface GenerateTextParams {
   apiKey: string;
@@ -10,7 +10,6 @@ interface GenerateTextParams {
 interface GroundingParams {
   apiKey: string;
   prompt: string;
-  type: 'search' | 'maps';
 }
 
 interface FixCodeParams {
@@ -20,11 +19,10 @@ interface FixCodeParams {
     fileName: string;
 }
 
-interface GenerateImageParams {
-    apiKey: string;
-    prompt: string;
-    model: 'gemini-2.5-flash-image';
-    aspectRatio: '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
+export interface GroundingChunk {
+    title: string;
+    url: string;
+    snippet: string;
 }
 
 // 1. Basic Text Generation (Updated to 2.5 Flash)
@@ -40,35 +38,37 @@ export const generateText = async ({ apiKey, model = 'gemini-2.0-flash', prompt,
   return response.text || '';
 };
 
-// 2. Grounding (Search & Maps)
-export const generateGroundingContent = async ({ apiKey, prompt, type }: GroundingParams) => {
+// 2. Grounding (Web Search only)
+export const generateGroundingContent = async ({ apiKey, prompt }: GroundingParams): Promise<{ text: string; chunks: GroundingChunk[] }> => {
     const ai = new GoogleGenAI({ apiKey });
-    
-    // Per instructions: Search uses gemini-3-flash-preview, Maps uses gemini-2.5-flash
-    const modelName = type === 'search' ? 'gemini-2.0-flash' : 'gemini-2.5-flash';
-    
-    const tools = [];
-    if (type === 'search') {
-        tools.push({ googleSearch: {} });
-    } else {
-        tools.push({ googleMaps: {} });
-    }
-
-    const systemInstruction = "Você é um assistente útil. Responda SEMPRE em Português do Brasil. Para buscas, forneça um resumo claro. Para mapas, forneça detalhes do local.";
+    const modelName = 'gemini-2.0-flash';
+    const systemInstruction = "Você é um assistente útil. Responda em Português do Brasil e sempre cite as principais fontes usadas.";
 
     try {
         const response = await ai.models.generateContent({
             model: modelName,
             contents: prompt,
             config: {
-                tools,
+                tools: [{ googleSearch: {} }],
                 systemInstruction
             }
         });
 
-        // Extract grounding metadata
-        const chunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const rawChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+        const supports = response.candidates?.[0]?.groundingMetadata?.groundingSupports || [];
         const text = response.text || "Nenhum resultado encontrado.";
+        const chunks: GroundingChunk[] = rawChunks
+            .map((chunk: any, idx: number) => {
+                const web = chunk?.web || {};
+                const support = supports[idx];
+                const snippet = support?.segment?.text || support?.groundingChunkIndices?.join(', ') || '';
+                return {
+                    title: web.title || 'Fonte',
+                    url: web.uri || '',
+                    snippet
+                };
+            })
+            .filter((chunk: GroundingChunk) => chunk.url);
 
         return { text, chunks };
     } catch (error: any) {
@@ -146,43 +146,5 @@ export const analyzeCodeHover = async (apiKey: string, codeSnippet: string, lang
         return response.text || "Sem análise disponível.";
     } catch (error) {
         return "Erro na análise IA.";
-    }
-};
-
-// 5. Image Generation (Nano Banana)
-export const generateNanoImage = async ({ apiKey, prompt, model, aspectRatio }: GenerateImageParams): Promise<string> => {
-    const ai = new GoogleGenAI({ apiKey });
-    
-    try {
-        const response = await ai.models.generateContent({
-            model,
-            contents: {
-                parts: [{ text: prompt }]
-            },
-            config: {
-                imageConfig: {
-                    aspectRatio: aspectRatio,
-                    // imageSize: "1K" // Optional, default is 1K
-                }
-            }
-        });
-
-        // Iterate through candidates to find image part
-        const parts = response.candidates?.[0]?.content?.parts;
-        if (!parts) throw new Error("No content generated.");
-
-        for (const part of parts) {
-            if (part.inlineData) {
-                const base64String = part.inlineData.data;
-                const mimeType = part.inlineData.mimeType || 'image/png';
-                return `data:${mimeType};base64,${base64String}`;
-            }
-        }
-        
-        throw new Error("No image data found in response.");
-
-    } catch (error: any) {
-        console.error("Image Gen Error", error);
-        throw new Error(error.message || "Failed to generate image.");
     }
 };

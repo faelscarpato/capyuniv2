@@ -27,6 +27,7 @@ const translations = {
         toggleSidebar: 'Alternar Barra Lateral',
         togglePanel: 'Alternar Painel',
         webPreview: 'Web Preview (Lateral)',
+        webSearch: 'Pesquisa Web',
         capyUniverse: 'CapyUniverse (Lateral)',
         aiChat: 'Chat IA',
         startPreview: 'Iniciar Web Preview (Rodapé)',
@@ -37,13 +38,7 @@ const translations = {
         language: 'Idioma / Language',
         themes: 'Temas',
         configApiKey: 'Configurar API Gemini',
-        nanoBanana: 'Nano Banana',
-        generateImage: 'Gerar Imagem',
-        promptPlaceholder: 'Descreva a imagem (ex: Um gato cyberpunk)...',
-        aspectRatio: 'Proporção',
-        model: 'Modelo',
-        download: 'Baixar',
-        generating: 'Gerando...'
+        cloneGit: 'Clonar Repositório Git'
     },
     en: {
         file: 'File',
@@ -71,6 +66,7 @@ const translations = {
         toggleSidebar: 'Toggle Sidebar',
         togglePanel: 'Toggle Panel',
         webPreview: 'Web Preview (Side)',
+        webSearch: 'Web Search',
         capyUniverse: 'CapyUniverse (Side)',
         aiChat: 'AI Chat',
         startPreview: 'Start Web Preview (Bottom)',
@@ -81,13 +77,7 @@ const translations = {
         language: 'Language',
         themes: 'Themes',
         configApiKey: 'Configure Gemini API',
-        nanoBanana: 'Nano Banana',
-        generateImage: 'Generate Image',
-        promptPlaceholder: 'Describe image (e.g. A cyberpunk cat)...',
-        aspectRatio: 'Aspect Ratio',
-        model: 'Model',
-        download: 'Download',
-        generating: 'Generating...'
+        cloneGit: 'Clone Git Repository'
     }
 };
 

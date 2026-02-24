@@ -5,194 +5,216 @@ import { useUIStore } from '../../stores/uiStore';
 import { ContextMenu, ContextMenuItem } from '../ui/ContextMenu';
 import { Icon } from '../ui/Icon';
 import { setTerminalCwd } from '../../lib/terminalEngine';
+import { emitTerminalSetCwd } from '../../lib/terminalBridge';
 import { useNotificationStore } from '../../stores/notificationStore';
 
 export const Explorer: React.FC = () => {
-  const { createFile, createFolder, deleteNode, setRenamingNodeId, files, moveNode, openFile } = useWorkspaceStore();
-  const { setPanelOpen, setActivePanelTab, setPreviewFileId } = useUIStore();
-  const { addNotification } = useNotificationStore();
+    const {
+        createFile, createFolder, deleteNode, setRenamingNodeId,
+        files, moveNode, openFile, refreshFromPTY
+    } = useWorkspaceStore();
+    const { setPanelOpen, setActivePanelTab, setPreviewFileId } = useUIStore();
+    const { addNotification } = useNotificationStore();
 
-  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: string | null; isOpen: boolean }>({
-    x: 0,
-    y: 0,
-    targetId: null,
-    isOpen: false,
-  });
-
-  const handleContextMenu = (e: React.MouseEvent, id: string) => {
-    e.preventDefault();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      targetId: id,
-      isOpen: true,
+    const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: string | null; isOpen: boolean }>({
+        x: 0,
+        y: 0,
+        targetId: null,
+        isOpen: false,
     });
-  };
-  
-  const getParentForCreation = () => {
-      if (!contextMenu.targetId) return 'root';
-      const node = files[contextMenu.targetId];
-      if (!node) return 'root';
-      if (node.type === 'folder') return node.id;
-      return node.parentId || 'root';
-  };
 
-  const handleCreateFile = () => {
-      const parentId = getParentForCreation();
-      const name = prompt("Enter file name:");
-      if (name) createFile(parentId, name);
-  };
+    const handleContextMenu = (e: React.MouseEvent, id: string) => {
+        e.preventDefault();
+        setContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            targetId: id,
+            isOpen: true,
+        });
+    };
 
-  const handleCreateFolder = () => {
-      const parentId = getParentForCreation();
-      const name = prompt("Enter folder name:");
-      if (name) createFolder(parentId, name);
-  };
+    const getParentForCreation = () => {
+        if (!contextMenu.targetId) return 'root';
+        const node = files[contextMenu.targetId];
+        if (!node) return 'root';
+        if (node.type === 'folder') return node.id;
+        return node.parentId || 'root';
+    };
 
-  const handleRename = () => {
-      if (!contextMenu.targetId) return;
-      setRenamingNodeId(contextMenu.targetId);
-  };
+    const handleCreateFile = () => {
+        const parentId = getParentForCreation();
+        const name = prompt("Enter file name:");
+        if (name) createFile(parentId, name);
+    };
 
-  const handleDelete = () => {
-      if (!contextMenu.targetId) return;
-      if (confirm("Are you sure you want to delete this?")) {
-          deleteNode(contextMenu.targetId);
-      }
-  };
+    const handleCreateFolder = () => {
+        const parentId = getParentForCreation();
+        const name = prompt("Enter folder name:");
+        if (name) createFolder(parentId, name);
+    };
 
-  const handleOpenTerminal = () => {
-      let targetId = contextMenu.targetId || 'root';
-      
-      // If selected is a file, set CWD to its parent
-      if (files[targetId] && files[targetId].type === 'file') {
-          targetId = files[targetId].parentId || 'root';
-      }
+    const handleRename = () => {
+        if (!contextMenu.targetId) return;
+        setRenamingNodeId(contextMenu.targetId);
+    };
 
-      setTerminalCwd(targetId);
-      setActivePanelTab('TERMINAL');
-      setPanelOpen(true);
-  };
+    const handleDelete = () => {
+        if (!contextMenu.targetId) return;
+        if (confirm("Are you sure you want to delete this?")) {
+            deleteNode(contextMenu.targetId);
+        }
+    };
 
-  const handlePreview = () => {
-      // Set the specific file ID to be previewed
-      setPreviewFileId(contextMenu.targetId);
-      setActivePanelTab('PREVIEW');
-      setPanelOpen(true);
-  };
+    const handleOpenTerminal = () => {
+        let targetId = contextMenu.targetId || 'root';
 
-  const handleBgContextMenu = (e: React.MouseEvent) => {
-      if(contextMenu.isOpen) return;
-      e.preventDefault();
-      setContextMenu({
-          x: e.clientX,
-          y: e.clientY,
-          targetId: 'root',
-          isOpen: true
-      });
-  }
+        // If selected is a file, set CWD to its parent
+        if (files[targetId] && files[targetId].type === 'file') {
+            targetId = files[targetId].parentId || 'root';
+        }
 
-  // Allow Dropping to Root
-  const handleDragOver = (e: React.DragEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-  };
+        setTerminalCwd(targetId);
+        const buildPath = (id: string): string => {
+            if (id === 'root') return '/';
+            let path = '';
+            let cursor = files[id];
+            while (cursor && cursor.id !== 'root') {
+                path = `/${cursor.name}${path}`;
+                cursor = cursor.parentId ? files[cursor.parentId] : undefined;
+            }
+            return path || '/';
+        };
+        emitTerminalSetCwd(buildPath(targetId));
+        setActivePanelTab('TERMINAL');
+        setPanelOpen(true);
+    };
 
-  const handleDrop = (e: React.DragEvent) => {
-      e.preventDefault();
-      const draggedId = e.dataTransfer.getData('text/plain');
-      if (draggedId) {
-          // If dropped on the empty area, move to root
-          moveNode(draggedId, 'root');
-      }
-  };
+    const handlePreview = () => {
+        // Set the specific file ID to be previewed
+        setPreviewFileId(contextMenu.targetId);
+        setActivePanelTab('PREVIEW');
+        setPanelOpen(true);
+    };
 
-  // Generate Menu Items based on selection type
-  const getMenuItems = (): ContextMenuItem[] => {
-      const node = contextMenu.targetId ? files[contextMenu.targetId] : null;
-      const isFolder = node?.type === 'folder';
-      const isRoot = !node || contextMenu.targetId === 'root';
+    const handleBgContextMenu = (e: React.MouseEvent) => {
+        if (contextMenu.isOpen) return;
+        e.preventDefault();
+        setContextMenu({
+            x: e.clientX,
+            y: e.clientY,
+            targetId: 'root',
+            isOpen: true
+        });
+    }
 
-      // 1. Background / Root Menu
-      if (isRoot) {
-          return [
-            { label: 'Novo Arquivo', onClick: handleCreateFile },
-            { label: 'Nova Pasta', onClick: handleCreateFolder },
-            { label: '', onClick: () => {}, separator: true },
+    // Allow Dropping to Root
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
+
+    const handleDrop = (e: React.DragEvent) => {
+        e.preventDefault();
+        const draggedId = e.dataTransfer.getData('text/plain');
+        if (draggedId) {
+            // If dropped on the empty area, move to root
+            moveNode(draggedId, 'root');
+        }
+    };
+
+    // Generate Menu Items based on selection type
+    const getMenuItems = (): ContextMenuItem[] => {
+        const node = contextMenu.targetId ? files[contextMenu.targetId] : null;
+        const isFolder = node?.type === 'folder';
+        const isRoot = !node || contextMenu.targetId === 'root';
+
+        // 1. Background / Root Menu
+        if (isRoot) {
+            return [
+                { label: 'Novo Arquivo', onClick: handleCreateFile },
+                { label: 'Nova Pasta', onClick: handleCreateFolder },
+                { label: '', onClick: () => { }, separator: true },
+                { label: 'Abrir no Terminal Integrado', onClick: handleOpenTerminal },
+                { label: 'Sincronizar Repositório', onClick: refreshFromPTY },
+            ];
+        }
+
+        const items: ContextMenuItem[] = [];
+
+        // 2. Folder specific options
+        if (isFolder) {
+            items.push(
+                { label: 'Novo Arquivo', onClick: handleCreateFile },
+                { label: 'Nova Pasta', onClick: handleCreateFolder },
+                { label: '', onClick: () => { }, separator: true },
+            );
+        } else {
+            // 3. File specific options
+            items.push(
+                { label: 'Abrir', onClick: () => node && openFile(node.id) },
+                { label: 'Abrir Lateralmente', onClick: () => addNotification('info', 'Split view not implemented yet') },
+                { label: 'Mostrar Versão Prévia', onClick: handlePreview },
+                { label: '', onClick: () => { }, separator: true },
+            );
+        }
+
+        // Common Options
+        items.push(
+            { label: 'Recortar', onClick: () => { }, shortcut: 'Ctrl+X' },
+            { label: 'Copiar', onClick: () => { }, shortcut: 'Ctrl+C' },
+            { label: 'Colar', onClick: () => { }, shortcut: 'Ctrl+V' },
+            { label: '', onClick: () => { }, separator: true },
+            { label: 'Renomear', onClick: handleRename, shortcut: 'F2' },
+            { label: 'Excluir', onClick: handleDelete, danger: true },
+            { label: '', onClick: () => { }, separator: true },
+            { label: 'Copiar Caminho', onClick: () => node && navigator.clipboard.writeText(node.name) },
             { label: 'Abrir no Terminal Integrado', onClick: handleOpenTerminal },
-          ];
-      }
+        );
 
-      const items: ContextMenuItem[] = [];
+        return items;
+    };
 
-      // 2. Folder specific options
-      if (isFolder) {
-          items.push(
-              { label: 'Novo Arquivo', onClick: handleCreateFile },
-              { label: 'Nova Pasta', onClick: handleCreateFolder },
-              { label: '', onClick: () => {}, separator: true },
-          );
-      } else {
-          // 3. File specific options
-          items.push(
-              { label: 'Abrir', onClick: () => node && openFile(node.id) },
-              { label: 'Abrir Lateralmente', onClick: () => addNotification('info', 'Split view not implemented yet') },
-              { label: 'Mostrar Versão Prévia', onClick: handlePreview },
-              { label: '', onClick: () => {}, separator: true },
-          );
-      }
+    return (
+        <div
+            className="h-full flex flex-col bg-ide-sidebar text-ide-text select-none border-r border-ide-border/50"
+            onContextMenu={handleBgContextMenu}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+        >
+            <div className="flex items-center justify-between px-5 py-4 text-[11px] font-bold uppercase tracking-[0.15em] text-ide-muted">
+                <span>Explorer</span>
+                <div className="flex gap-3">
+                    <button type="button" title="Sincronizar" className="text-ide-muted hover:text-white transition-colors active:scale-90" onClick={refreshFromPTY}>
+                        <Icon name="RefreshCw" size={14} />
+                    </button>
+                    <button type="button" title="Novo Arquivo" className="text-ide-muted hover:text-white transition-colors active:scale-90" onClick={() => { setContextMenu({ x: 0, y: 0, targetId: 'root', isOpen: false }); handleCreateFile() }}>
+                        <Icon name="FilePlus" size={16} />
+                    </button>
+                    <button type="button" title="Nova Pasta" className="text-ide-muted hover:text-white transition-colors active:scale-90" onClick={() => { setContextMenu({ x: 0, y: 0, targetId: 'root', isOpen: false }); handleCreateFolder() }}>
+                        <Icon name="FolderPlus" size={16} />
+                    </button>
+                </div>
+            </div>
 
-      // Common Options
-      items.push(
-        { label: 'Recortar', onClick: () => {}, shortcut: 'Ctrl+X' },
-        { label: 'Copiar', onClick: () => {}, shortcut: 'Ctrl+C' },
-        { label: 'Colar', onClick: () => {}, shortcut: 'Ctrl+V' },
-        { label: '', onClick: () => {}, separator: true },
-        { label: 'Renomear', onClick: handleRename, shortcut: 'F2' },
-        { label: 'Excluir', onClick: handleDelete, danger: true },
-        { label: '', onClick: () => {}, separator: true },
-        { label: 'Copiar Caminho', onClick: () => node && navigator.clipboard.writeText(node.name) },
-        { label: 'Abrir no Terminal Integrado', onClick: handleOpenTerminal },
-      );
+            <div className="flex-1 overflow-y-auto no-scrollbar pb-6 px-2">
+                <div className="px-3 py-2 flex items-center gap-2 font-bold text-xs cursor-pointer text-white/90 hover:bg-ide-hover rounded-lg transition-all mb-2 group">
+                    <div className="w-5 h-5 flex items-center justify-center rounded-md bg-ide-accent/10 text-ide-accent group-hover:bg-ide-accent group-hover:text-white transition-all">
+                        <Icon name="Layers" size={12} />
+                    </div>
+                    <span className="tracking-wide">CAPYUNI_V2</span>
+                    <Icon name="ChevronDown" size={12} className="ml-auto text-ide-muted" />
+                </div>
+                <FileTree parentId="root" onContextMenu={handleContextMenu} />
+            </div>
 
-      return items;
-  };
-
-  return (
-    <div 
-        className="h-full flex flex-col bg-ide-sidebar text-ide-text select-none" 
-        onContextMenu={handleBgContextMenu}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-    >
-      <div className="flex items-center justify-between px-4 py-3 text-xs font-bold uppercase tracking-wider text-gray-400">
-        <span>Explorer</span>
-        <div className="flex gap-2">
-             <button className="hover:text-white" onClick={() => { setContextMenu({x:0, y:0, targetId: 'root', isOpen: false}); handleCreateFile() }}>
-                 <Icon name="FilePlus" size={14} />
-             </button>
-             <button className="hover:text-white" onClick={() => { setContextMenu({x:0, y:0, targetId: 'root', isOpen: false}); handleCreateFolder() }}>
-                 <Icon name="FolderPlus" size={14} />
-             </button>
+            {contextMenu.isOpen && (
+                <ContextMenu
+                    x={contextMenu.x}
+                    y={contextMenu.y}
+                    onClose={() => setContextMenu({ ...contextMenu, isOpen: false })}
+                    items={getMenuItems()}
+                />
+            )}
         </div>
-      </div>
-      
-      <div className="flex-1 overflow-y-auto pb-4">
-         <div className="px-4 py-1 flex items-center gap-1 font-bold text-sm cursor-pointer hover:text-white mb-1">
-             <Icon name="ChevronDown" size={14} />
-             <span>CAPYUNI-WORKSPACE</span>
-         </div>
-         <FileTree parentId="root" onContextMenu={handleContextMenu} />
-      </div>
-
-      {contextMenu.isOpen && (
-        <ContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          onClose={() => setContextMenu({ ...contextMenu, isOpen: false })}
-          items={getMenuItems()}
-        />
-      )}
-    </div>
-  );
+    );
 };

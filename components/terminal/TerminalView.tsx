@@ -1,200 +1,383 @@
 import React, { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { executeCommand } from '../../lib/terminalEngine';
+import { executeCommand, getTerminalCwdPath } from '../../lib/terminalEngine';
+import { onTerminalSetCwd, onTerminalSendCommand } from '../../lib/terminalBridge';
 import { useUIStore } from '../../stores/uiStore';
 
-export const TerminalView: React.FC = () => {
+type TerminalMode = 'real' | 'simulated';
+
+const PTY_WS_URL = (import.meta as any).env?.VITE_PTY_WS_URL || `ws://${window.location.hostname}:8787/pty`;
+
+interface TerminalViewProps {
+  terminalId: string;
+}
+
+export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const commandRef = useRef('');
-  
+  const wsRef = useRef<WebSocket | null>(null);
+  const modeRef = useRef<TerminalMode>('simulated');
+
   const { currentTheme, isPanelOpen } = useUIStore();
 
   const getXtermTheme = (themeId: string) => {
-      if (themeId === 'github-light') {
-          return {
-              background: '#ffffff',
-              foreground: '#24292f',
-              cursor: '#000000',
-              selectionBackground: 'rgba(0,0,0,0.1)',
-              cursorAccent: '#ffffff'
-          };
-      } else if (themeId === 'capy-dark') {
-          return {
-              background: '#0F172A',
-              foreground: '#E2E8F0',
-              cursor: '#8B5CF6',
-              selectionBackground: 'rgba(139, 92, 246, 0.3)',
-          };
-      }
+    if (themeId === 'midnight-pro') {
       return {
-        background: '#1e1e1e', 
-        foreground: '#cccccc',
-        cursor: '#A0D468',
-        selectionBackground: 'rgba(255, 255, 255, 0.1)',
+        background: '#000000',
+        foreground: '#F5F5F7',
+        cursor: '#3b82f6',
+        selectionBackground: 'rgba(59, 130, 246, 0.3)',
+        cursorAccent: '#000000',
+        black: '#000000',
+        red: '#ff5555',
+        green: '#50fa7b',
+        yellow: '#f1fa8c',
+        blue: '#3b82f6',
+        magenta: '#ff79c6',
+        cyan: '#8be9fd',
+        white: '#F5F5F7'
       };
+    }
+
+    if (themeId === 'capy-dark') {
+      return {
+        background: '#0F172A',
+        foreground: '#E2E8F0',
+        cursor: '#8B5CF6',
+        selectionBackground: 'rgba(139, 92, 246, 0.3)',
+        black: '#020617',
+        red: '#f43f5e',
+        green: '#10b981',
+        yellow: '#f59e0b',
+        blue: '#3b82f6',
+        magenta: '#d946ef',
+        cyan: '#06b6d4',
+        white: '#F8FAFC'
+      };
+    }
+
+    return {
+      background: '#1e1e1e',
+      foreground: '#cccccc',
+      cursor: '#A0D468',
+      selectionBackground: 'rgba(255, 255, 255, 0.1)'
+    };
   };
 
-  // Helper to safely fit
   const safeFit = () => {
-      // CRITICAL: Do not try to fit if the container is hidden or collapsed.
-      // Fitting to 0x0 breaks xterm internal state.
-      if (!terminalRef.current || terminalRef.current.clientHeight < 10 || terminalRef.current.clientWidth < 10) {
-          return;
-      }
+    if (!terminalRef.current || terminalRef.current.clientHeight < 10 || terminalRef.current.clientWidth < 10) {
+      return;
+    }
 
-      if (fitAddonRef.current && xtermRef.current) {
-          try {
-              fitAddonRef.current.fit();
-              // Force a refresh of the viewport to ensure text renders
-              xtermRef.current.refresh(0, xtermRef.current.rows - 1);
-          } catch (e) {
-              console.warn("Terminal fit failed", e);
-          }
+    if (fitAddonRef.current && xtermRef.current) {
+      try {
+        fitAddonRef.current.fit();
+        xtermRef.current.refresh(0, xtermRef.current.rows - 1);
+
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'resize', cols: xtermRef.current.cols, rows: xtermRef.current.rows }));
+        }
+      } catch {
+        // noop
       }
+    }
+  };
+
+  const prompt = (term: Terminal) => {
+    const user = '\x1b[1;36mcapy\x1b[0m';
+    const at = '\x1b[1;30m@\x1b[0m';
+    const machine = '\x1b[1;34muni\x1b[0m';
+    const arrow = '\x1b[1;32m ➜ \x1b[0m';
+    const pathColor = '\x1b[1;35m';
+    const reset = '\x1b[0m';
+    const cwd = getTerminalCwdPath();
+
+    // Warp-style fancy prompt
+    term.write(`\r\n${user}${at}${machine}${arrow}${pathColor}${cwd}${reset} `);
+  };
+
+  const setMode = (term: Terminal, mode: TerminalMode) => {
+    if (modeRef.current === mode) return;
+    modeRef.current = mode;
+
+    if (mode === 'real') {
+      term.writeln(`\r\n\x1b[1;32m[Capy PTY]\x1b[0m Connected to instance ${terminalId}`);
+    } else {
+      term.writeln('\r\n\x1b[1;33m[Capy Terminal]\x1b[0m Using simulated fallback.');
+      prompt(term);
+    }
+  };
+
+  const tryConnectRealTerminal = (term: Terminal) => {
+    let resolved = false;
+    let fallbackTimer: number | null = null;
+    const announceFallback = () => {
+      if (modeRef.current === 'simulated') {
+        term.writeln('\r\n[Capy Terminal] Real terminal unavailable. Using simulated fallback.');
+        return;
+      }
+      setMode(term, 'simulated');
+    };
+
+    try {
+      const ws = new WebSocket(PTY_WS_URL);
+      wsRef.current = ws;
+
+      fallbackTimer = window.setTimeout(() => {
+        if (resolved) return;
+        resolved = true;
+        try { ws.close(); } catch { /* noop */ }
+        announceFallback();
+      }, 1200);
+
+      ws.addEventListener('open', () => {
+        if (resolved) return;
+        resolved = true;
+        if (fallbackTimer) window.clearTimeout(fallbackTimer);
+
+        setMode(term, 'real');
+        if (xtermRef.current) {
+          ws.send(JSON.stringify({ type: 'resize', cols: xtermRef.current.cols, rows: xtermRef.current.rows }));
+        }
+        ws.send(JSON.stringify({ type: 'setCwd', cwd: getTerminalCwdPath() }));
+      });
+
+      ws.addEventListener('message', (event) => {
+        if (!xtermRef.current) return;
+        if (typeof event.data === 'string') {
+          xtermRef.current.write(event.data);
+        }
+      });
+
+      ws.addEventListener('close', () => {
+        wsRef.current = null;
+        if (!resolved) {
+          resolved = true;
+          if (fallbackTimer) window.clearTimeout(fallbackTimer);
+          announceFallback();
+          return;
+        }
+
+        if (modeRef.current === 'real') {
+          setMode(term, 'simulated');
+        }
+      });
+
+      ws.addEventListener('error', () => {
+        if (!resolved) {
+          resolved = true;
+          if (fallbackTimer) window.clearTimeout(fallbackTimer);
+          announceFallback();
+        }
+      });
+    } catch {
+      announceFallback();
+    }
   };
 
   useEffect(() => {
     if (!terminalRef.current) return;
 
-    // 1. Initialize Terminal
-    const term = new Terminal({
-      cursorBlink: true,
-      fontSize: 14,
-      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-      theme: getXtermTheme(currentTheme),
-      convertEol: true, 
-      allowProposedApi: true,
-      cursorStyle: 'block',
-      scrollback: 1000,
-    });
+    let isDisposed = false;
+    let term: Terminal | null = null;
+    let fitAddon: FitAddon | null = null;
+    let dataDisposable: any = null;
+    let resizeObserver: ResizeObserver | null = null;
+    let unsubscribeSetCwd: any = null;
+    let unsubscribeCommand: any = null;
 
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    
-    term.open(terminalRef.current);
-    
-    xtermRef.current = term;
-    fitAddonRef.current = fitAddon;
+    const initTerminal = () => {
+      if (!terminalRef.current || isDisposed) return;
 
-    // Initial safe fit
-    requestAnimationFrame(() => {
-        safeFit();
-        term.focus();
-    });
+      // Ensure we have some dimensions or wait for them
+      const { clientWidth, clientHeight } = terminalRef.current;
+      if (clientWidth === 0 || clientHeight === 0) {
+        // Wait for next frame if being mounted in hidden container
+        requestAnimationFrame(initTerminal);
+        return;
+      }
 
-    // 2. Prompt Logic
-    const prompt = () => {
-        const isLight = currentTheme === 'github-light';
-        const userColor = '\x1b[1;32m'; // Green
-        const hostColor = '\x1b[1;34m'; // Blue
-        const reset = '\x1b[0m';
-        term.write(`\r\n${userColor}capy@uni${reset}:${hostColor}~${reset}$ `);
-    };
+      term = new Terminal({
+        cursorBlink: true,
+        fontSize: 14,
+        fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        theme: getXtermTheme(currentTheme),
+        convertEol: true,
+        allowProposedApi: true,
+        cursorStyle: 'block',
+        scrollback: 2000
+      });
 
-    term.writeln(`Welcome to CapyUNI Terminal`);
-    term.writeln('Type "help" for a list of commands.');
-    prompt();
+      fitAddon = new FitAddon();
+      term.loadAddon(fitAddon);
 
-    // 3. Input Handling
-    term.onKey(({ key, domEvent }) => {
-        const ev = domEvent;
-        const printable = !ev.altKey && !ev.ctrlKey && !ev.metaKey;
+      try {
+        term.open(terminalRef.current);
+        xtermRef.current = term;
+        fitAddonRef.current = fitAddon;
 
-        if (ev.keyCode === 13) { // Enter
+        requestAnimationFrame(() => {
+          if (!isDisposed) {
+            safeFit();
+            term?.focus();
+          }
+        });
+
+        term.writeln('\x1b[1;32mCapyUNI Terminal\x1b[0m v1.0');
+        term.writeln('\x1b[1;30mConnecting to backend...\x1b[0m');
+        prompt(term);
+
+        tryConnectRealTerminal(term);
+
+        unsubscribeCommand = onTerminalSendCommand((cmd) => {
+          if (modeRef.current === 'real' && wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(JSON.stringify({ type: 'input', data: cmd }));
+          } else if (modeRef.current === 'simulated') {
+            // Echo to terminal and execute
+            term?.write(cmd);
+            if (cmd === '\r') {
+              // Execute is already handled by term.onData if we write \r? 
+              // Actually term.write just displays. We need to manually trigger logic for simulated.
+            }
+          }
+        });
+
+        dataDisposable = term.onData((data) => {
+          if (modeRef.current === 'real') {
+            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+              wsRef.current.send(JSON.stringify({ type: 'input', data }));
+            }
+            return;
+          }
+
+          if (data === '\x03') { // Ctrl+C
+            commandRef.current = '';
+            term?.write('^C\r\n');
+            prompt(term!);
+            return;
+          }
+
+          if (data === '\r') {
             const cmd = commandRef.current;
             commandRef.current = '';
-            
+
             if (cmd.trim() === 'clear') {
-                term.clear();
-                prompt();
-                return;
+              term?.clear();
+              prompt(term!);
+              return;
             }
 
-            term.write('\r\n');
-            if (cmd.length > 0) {
-                const output = executeCommand(cmd);
-                if (output) term.writeln(output);
+            term?.write('\r\n');
+            if (cmd.trim().length > 0) {
+              const output = executeCommand(cmd);
+              if (output) term?.writeln(output);
             }
-            prompt();
-        } else if (ev.keyCode === 8) { // Backspace
+
+            prompt(term!);
+            return;
+          }
+
+          if (data === '\u007f') {
             if (commandRef.current.length > 0) {
-                commandRef.current = commandRef.current.slice(0, -1);
-                term.write('\b \b');
+              commandRef.current = commandRef.current.slice(0, -1);
+              term?.write('\b \b');
             }
-        } else if (printable) {
-            commandRef.current += key;
-            term.write(key);
-        }
-    });
+            return;
+          }
 
-    // CRITICAL FIX: Only trigger safeFit via ResizeObserver if the element actually has size
-    const resizeObserver = new ResizeObserver((entries) => {
-        for (const entry of entries) {
-            // Ignore resize events when panel is collapsing/closed (height 0)
+          if (data >= ' ') {
+            commandRef.current += data;
+            term?.write(data);
+          }
+        });
+
+        unsubscribeSetCwd = onTerminalSetCwd((cwd) => {
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && modeRef.current === 'real') {
+            wsRef.current.send(JSON.stringify({ type: 'setCwd', cwd }));
+          }
+        });
+
+        resizeObserver = new ResizeObserver((entries) => {
+          for (const entry of entries) {
             if (entry.contentRect.height > 0 && entry.contentRect.width > 0) {
-                // Debounce slightly to avoid thrashing during animation
-                window.requestAnimationFrame(() => safeFit());
+              window.requestAnimationFrame(() => safeFit());
             }
-        }
-    });
-    
-    resizeObserver.observe(terminalRef.current);
+          }
+        });
+
+        resizeObserver.observe(terminalRef.current);
+
+      } catch (err) {
+        console.error('Xterm initialization failed:', err);
+      }
+    };
+
+    // Delay start slightly to allow layout to settle
+    const initTimeout = setTimeout(initTerminal, 100);
 
     return () => {
-        term.dispose();
-        resizeObserver.disconnect();
+      isDisposed = true;
+      clearTimeout(initTimeout);
+      dataDisposable?.dispose();
+      unsubscribeSetCwd?.();
+      unsubscribeCommand?.();
+      resizeObserver?.disconnect();
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch { }
+        wsRef.current = null;
+      }
+      term?.dispose();
+      xtermRef.current = null;
+      fitAddonRef.current = null;
     };
   }, []);
 
-  // Theme Update Effect
   useEffect(() => {
-      if (xtermRef.current) {
-          xtermRef.current.options.theme = getXtermTheme(currentTheme);
-          // Don't call fit here immediately, let resize observer handle layout changes
-      }
+    if (xtermRef.current) {
+      xtermRef.current.options.theme = getXtermTheme(currentTheme);
+    }
   }, [currentTheme]);
 
-  // Panel Open/Close Effect
   useEffect(() => {
-      if (isPanelOpen) {
-          // The panel just opened. We need to wait for the CSS transition to finish
-          // and then force a fit and focus.
-          
-          // 1. Immediate try (might fail if transition just started)
+    if (isPanelOpen) {
+      // Multiple attempts to fit as layout animation progresses
+      const timers = [0, 100, 300, 600].map(ms =>
+        setTimeout(() => {
           safeFit();
+          if (xtermRef.current) {
+            xtermRef.current.scrollToBottom();
+          }
+        }, ms)
+      );
 
-          // 2. Mid-transition update
-          const t1 = setTimeout(safeFit, 150);
-
-          // 3. Post-transition (350ms) - This is the most important one
-          const t2 = setTimeout(() => {
-              safeFit();
-              // Force focus so user can type immediately
-              if (xtermRef.current) {
-                  xtermRef.current.focus();
-                  xtermRef.current.scrollToBottom();
-              }
-          }, 350);
-          
-          return () => { clearTimeout(t1); clearTimeout(t2); };
-      }
+      return () => timers.forEach(clearTimeout);
+    }
   }, [isPanelOpen]);
 
-  // Handle click on container to focus terminal
+  // Handle data arrival scrolling
+  useEffect(() => {
+    if (xtermRef.current && modeRef.current === 'real') {
+      // Auto-scroll is usually default, but we can reinforce it if needed
+    }
+  }, []);
+
   const handleContainerClick = () => {
-      if (xtermRef.current) {
-          xtermRef.current.focus();
-      }
+    if (xtermRef.current) {
+      xtermRef.current.focus();
+    }
   };
 
   return (
-    <div 
-        ref={terminalRef} 
-        className="h-full w-full overflow-hidden cursor-text pl-2 pt-1" 
+    <div className="h-full w-full relative bg-black/20">
+      <div
+        ref={terminalRef}
+        className="absolute inset-0 cursor-text overflow-hidden"
+        style={{ padding: '8px 0 0 8px' }}
         onClick={handleContainerClick}
-    />
+      />
+    </div>
   );
 };

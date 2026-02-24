@@ -8,7 +8,7 @@
   <title>CapyUNI Codium</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="manifest" href="/manifest.json" />
+  <link rel="manifest" href="/assets/manifest-BGHifluj.json" />
 
   <script>
     tailwind.config = {
@@ -121,6 +121,8 @@
     gtag('js', new Date()); gtag('config', 'G-3FFD7ZEBN1', { page_path: location.pathname });
   </script>
 
+
+  <!-- NOTE: Removed /index.css (it wasn't being emitted in build and could 404 in prod). -->
   <script type="importmap">
 {
   "imports": {
@@ -142,13 +144,12 @@
   }
 }
 </script>
-  <!-- NOTE: Removed /index.css (it wasn't being emitted in build and could 404 in prod). -->
+  <script type="module" crossorigin src="/assets/index-2u6vDGFp.js"></script>
 </head>
 
 <body>
   <div id="root"></div>
   <!-- Use a relative entry so Vite ALWAYS treats it as a build entry module. -->
-  <script type="module" src="./index.tsx"></script>
 </body>
 
 </html>

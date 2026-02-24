@@ -35,20 +35,20 @@ export const WelcomeScreen: React.FC<Props> = ({ onLaunch }) => {
 
     return (
         <div className={`fixed inset-0 z-[999] bg-black text-white transition-opacity duration-700 overflow-hidden font-sans selection:bg-purple-500/30 ${isLeaving ? 'opacity-0 scale-95' : 'opacity-100'}`}>
-            
+
             {/* Matrix / Code Rain Animation Background */}
             <div className="absolute inset-0 pointer-events-none opacity-[0.03] overflow-hidden flex flex-col justify-center">
-                 <div className="whitespace-nowrap font-mono text-sm text-green-500 animate-[scroll_20s_linear_infinite] leading-loose" style={{ transform: 'rotate(-5deg) scale(1.5)' }}>
-                     {repeatedCode}
-                 </div>
-                 <div className="whitespace-nowrap font-mono text-sm text-blue-500 animate-[scroll_25s_linear_infinite_reverse] leading-loose" style={{ transform: 'rotate(-5deg) scale(1.5)' }}>
-                     {repeatedCode}
-                 </div>
-                 <div className="whitespace-nowrap font-mono text-sm text-purple-500 animate-[scroll_30s_linear_infinite] leading-loose" style={{ transform: 'rotate(-5deg) scale(1.5)' }}>
-                     {repeatedCode}
-                 </div>
-                 {/* CSS Animation injection */}
-                 <style>{`
+                <div className="whitespace-nowrap font-mono text-sm text-green-500 animate-[scroll_20s_linear_infinite] leading-loose" style={{ transform: 'rotate(-5deg) scale(1.5)' }}>
+                    {repeatedCode}
+                </div>
+                <div className="whitespace-nowrap font-mono text-sm text-blue-500 animate-[scroll_25s_linear_infinite_reverse] leading-loose" style={{ transform: 'rotate(-5deg) scale(1.5)' }}>
+                    {repeatedCode}
+                </div>
+                <div className="whitespace-nowrap font-mono text-sm text-purple-500 animate-[scroll_30s_linear_infinite] leading-loose" style={{ transform: 'rotate(-5deg) scale(1.5)' }}>
+                    {repeatedCode}
+                </div>
+                {/* CSS Animation injection */}
+                <style>{`
                     @keyframes scroll {
                         from { transform: translateX(0) rotate(-5deg) scale(1.5); }
                         to { transform: translateX(-50%) rotate(-5deg) scale(1.5); }
@@ -58,27 +58,27 @@ export const WelcomeScreen: React.FC<Props> = ({ onLaunch }) => {
 
             {/* Ambient Background Glows */}
             <div className="fixed inset-0 pointer-events-none">
-                <div className="absolute -top-[30%] -left-[10%] w-[70vw] h-[70vw] bg-purple-900/10 rounded-full blur-[120px] animate-pulse duration-[10000ms]"></div>
-                <div className="absolute bottom-[0%] right-[0%] w-[60vw] h-[60vw] bg-blue-900/10 rounded-full blur-[120px] animate-pulse duration-[8000ms]"></div>
+                <div className="absolute -top-[30%] -left-[10%] w-[70vw] h-[70vw] bg-ide-secondary/10 rounded-full blur-[120px] animate-pulse-slow"></div>
+                <div className="absolute bottom-[0%] right-[0%] w-[60vw] h-[60vw] bg-ide-accent/10 rounded-full blur-[120px] animate-pulse-slow"></div>
             </div>
 
             {/* Main Content */}
             <div className={`relative z-10 flex flex-col items-center justify-center min-h-screen w-full px-4 py-10 transition-all duration-1000 ease-out transform ${animateIn ? 'translate-y-0 opacity-100' : 'translate-y-12 opacity-0'}`}>
-                
+
                 {/* Hero Section */}
                 <div className="text-center mb-10 md:mb-16 mt-4">
-                    <div className="inline-flex items-center justify-center p-4 md:p-5 mb-6 md:mb-8 bg-white/5 border border-white/10 rounded-3xl shadow-[0_0_40px_rgba(59,130,246,0.15)] backdrop-blur-md relative group overflow-hidden">
-                         <div className="absolute inset-0 bg-gradient-to-tr from-blue-500/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-                         <Icon name="TerminalSquare" size={48} className="text-[#3b82f6] relative z-10 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)] md:w-16 md:h-16" />
+                    <div className="inline-flex items-center justify-center p-5 md:p-6 mb-8 bg-white/5 border border-white/10 rounded-3xl shadow-[0_0_50px_rgba(59,130,246,0.1)] backdrop-blur-xl relative group overflow-hidden">
+                        <div className="absolute inset-0 bg-gradient-to-tr from-ide-accent/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
+                        <Icon name="TerminalSquare" size={48} className="text-ide-accent relative z-10 drop-shadow-[0_0_15px_rgba(59,130,246,0.5)] md:w-20 md:h-20" />
                     </div>
-                    
-                    <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-4 md:mb-6 leading-tight">
+
+                    <h1 className="text-6xl md:text-8xl font-black tracking-tighter mb-6 leading-none">
                         <span className="text-white">Capy</span>
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#3b82f6] via-[#8B5CF6] to-[#ef4444]">UNI</span>
+                        <span className="text-transparent bg-clip-text bg-gradient-to-br from-ide-accent via-ide-secondary to-[#ef4444] animate-gradient-x">UNI</span>
                     </h1>
-                    
-                    <p className="text-lg md:text-2xl text-slate-400 font-light max-w-2xl mx-auto leading-relaxed px-4">
-                        Selecione seu estilo para iniciar a sessão
+
+                    <p className="text-xl md:text-2xl text-ide-muted font-light max-w-2xl mx-auto leading-relaxed px-4">
+                        A evolução da sua produtividade começa aqui
                     </p>
                 </div>
 
@@ -88,7 +88,7 @@ export const WelcomeScreen: React.FC<Props> = ({ onLaunch }) => {
                         {displayThemes.map((theme, idx) => {
                             const isSelected = currentTheme === theme.id;
                             return (
-                                <button 
+                                <button
                                     key={theme.id}
                                     onClick={() => handleThemeSelect(theme.id)}
                                     className={`
@@ -99,23 +99,23 @@ export const WelcomeScreen: React.FC<Props> = ({ onLaunch }) => {
                                     style={{ transitionDelay: `${idx * 100 + 200}ms` }}
                                 >
                                     <div className={`
-                                        w-full aspect-video rounded-xl border transition-all duration-300 overflow-hidden relative shadow-2xl
-                                        border-white/10 hover:border-[#3b82f6] hover:shadow-[0_0_30px_rgba(59,130,246,0.4)]
-                                        group-hover:scale-105
+                                        w-full aspect-video rounded-capy-lg border transition-all duration-500 overflow-hidden relative shadow-2xl
+                                        border-ide-border hover:border-ide-accent hover:shadow-[0_0_40px_rgba(59,130,246,0.3)]
+                                        group-hover:scale-105 group-hover:-translate-y-1
                                     `}>
                                         {/* Abstract UI Preview */}
                                         <div className="w-full h-full flex" style={{ backgroundColor: theme.colors['--ide-bg'] }}>
                                             <div className="w-[15%] h-full border-r" style={{ backgroundColor: theme.colors['--ide-activity'], borderColor: theme.colors['--ide-border'] }} />
                                             <div className="w-[25%] h-full border-r" style={{ backgroundColor: theme.colors['--ide-sidebar'], borderColor: theme.colors['--ide-border'] }} />
-                                            <div className="flex-1 p-2 md:p-3 flex flex-col gap-2">
-                                                <div className="w-1/3 h-1.5 md:h-2 rounded-full" style={{ backgroundColor: theme.colors['--ide-accent'] }} />
-                                                <div className="w-2/3 h-1.5 md:h-2 rounded-full opacity-30" style={{ backgroundColor: theme.colors['--ide-text'] }} />
-                                                <div className="w-1/2 h-1.5 md:h-2 rounded-full opacity-30" style={{ backgroundColor: theme.colors['--ide-text'] }} />
+                                            <div className="flex-1 p-3 md:p-4 flex flex-col gap-2.5">
+                                                <div className="w-1/3 h-2 md:h-2.5 rounded-full" style={{ backgroundColor: theme.colors['--ide-accent'] }} />
+                                                <div className="w-2/3 h-2 md:h-2.5 rounded-full opacity-20" style={{ backgroundColor: theme.colors['--ide-text'] }} />
+                                                <div className="w-1/2 h-2 md:h-2.5 rounded-full opacity-20" style={{ backgroundColor: theme.colors['--ide-text'] }} />
                                             </div>
                                         </div>
                                     </div>
-                                    
-                                    <span className={`text-sm font-medium tracking-wide transition-colors ${isSelected ? 'text-[#3b82f6]' : 'text-slate-400 group-hover:text-white'}`}>
+
+                                    <span className={`text-sm font-semibold tracking-widest uppercase transition-colors ${isSelected ? 'text-ide-accent' : 'text-ide-muted group-hover:text-white'}`}>
                                         {theme.label}
                                     </span>
                                 </button>
@@ -124,12 +124,12 @@ export const WelcomeScreen: React.FC<Props> = ({ onLaunch }) => {
                     </div>
                 </div>
 
-                 {/* Footer */}
+                {/* Footer */}
                 <div className="text-slate-600 text-xs font-mono tracking-wider opacity-50 pb-4 text-center mt-auto">
                     CAPYUNI v1.0.0 • POWERED BY GEMINI • LOCAL FIRST
                 </div>
             </div>
-            
+
         </div>
     );
 };

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { applyTheme } from '../lib/themes';
 
-export type SidebarViewType = 'explorer' | 'search' | 'settings' | 'docs' | 'community' | 'blog' | 'pricing' | 'extensions' | 'run' | 'grounding' | 'nano-banana';
+export type SidebarViewType = 'explorer' | 'search' | 'settings' | 'docs' | 'community' | 'blog' | 'pricing' | 'extensions' | 'run' | 'grounding' | 'source_control';
 export type RightSidebarViewType = 'chat' | 'preview' | 'capyuniverse' | 'none';
 export type Language = 'pt' | 'en';
 
@@ -26,8 +26,8 @@ interface UIState {
   // Left Sidebar
   isSidebarOpen: boolean;
   activeSidebarView: SidebarViewType;
-  sidebarWidth: number; 
-  
+  sidebarWidth: number;
+
   // Right Sidebar (AI & Preview)
   isRightSidebarOpen: boolean;
   activeRightSidebarView: RightSidebarViewType;
@@ -37,7 +37,7 @@ interface UIState {
   isPanelOpen: boolean;
   activePanelTab: string;
   panelHeight: number;
-  
+
   // Mobile Specific
   isMobileDockCollapsed: boolean;
 
@@ -47,7 +47,7 @@ interface UIState {
   // Modals
   isQuickOpenOpen: boolean;
   isCommandPaletteOpen: boolean;
-  isAboutOpen: boolean; 
+  isAboutOpen: boolean;
   isDocsOpen: boolean;
   isTutorialOpen: boolean;
   isApiKeyModalOpen: boolean;
@@ -56,6 +56,10 @@ interface UIState {
   currentTheme: string;
   consoleOutput: string[];
   markers: MarkerData[];
+
+  // Multi-terminal state
+  terminals: { id: string; title: string }[];
+  activeTerminalId: string | null;
 
   // Actions
   setIsMobile: (isMobile: boolean) => void;
@@ -70,24 +74,24 @@ interface UIState {
   setRightSidebarOpen: (open: boolean) => void;
   setActiveRightSidebarView: (view: RightSidebarViewType) => void;
   setRightSidebarWidth: (width: number) => void;
-  
+
   togglePanel: () => void;
   setPanelOpen: (open: boolean) => void;
   setPanelHeight: (height: number) => void;
   setActivePanelTab: (tab: string) => void;
-  
+
   setMobileDockCollapsed: (collapsed: boolean) => void;
   toggleMobileDock: () => void;
 
   setPreviewFileId: (id: string | null) => void;
-  
+
   toggleQuickOpen: () => void;
   setQuickOpen: (open: boolean) => void;
-  
+
   toggleCommandPalette: () => void;
   setCommandPalette: (open: boolean) => void;
 
-  setAboutOpen: (open: boolean) => void; 
+  setAboutOpen: (open: boolean) => void;
   setDocsOpen: (open: boolean) => void;
   setTutorialOpen: (open: boolean) => void;
   setApiKeyModalOpen: (open: boolean) => void;
@@ -95,8 +99,13 @@ interface UIState {
   setTheme: (themeId: string) => void;
   addConsoleLog: (log: string) => void;
   clearConsole: () => void;
-  
+
   setMarkers: (markers: MarkerData[]) => void;
+
+  // Terminal Actions
+  addTerminal: () => void;
+  removeTerminal: (id: string) => void;
+  setActiveTerminalId: (id: string) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -105,16 +114,16 @@ export const useUIStore = create<UIState>((set) => ({
 
   isSidebarOpen: true,
   activeSidebarView: 'explorer',
-  sidebarWidth: 300, 
-  
+  sidebarWidth: 300,
+
   isRightSidebarOpen: false,
   activeRightSidebarView: 'chat',
   rightSidebarWidth: 350,
 
-  isPanelOpen: false, 
+  isPanelOpen: false,
   activePanelTab: 'TERMINAL',
   panelHeight: 250,
-  
+
   isMobileDockCollapsed: false,
 
   previewFileId: null,
@@ -127,6 +136,8 @@ export const useUIStore = create<UIState>((set) => ({
   isApiKeyModalOpen: false,
 
   currentTheme: 'vscode-dark',
+  terminals: [{ id: 'term-1', title: 'Terminal' }],
+  activeTerminalId: 'term-1',
   consoleOutput: [],
   markers: [],
 
@@ -142,7 +153,7 @@ export const useUIStore = create<UIState>((set) => ({
   setRightSidebarOpen: (open) => set({ isRightSidebarOpen: open }),
   setActiveRightSidebarView: (view) => set({ activeRightSidebarView: view }),
   setRightSidebarWidth: (width) => set({ rightSidebarWidth: width }),
-  
+
   togglePanel: () => set((state) => ({ isPanelOpen: !state.isPanelOpen })),
   setPanelOpen: (open) => set({ isPanelOpen: open }),
   setPanelHeight: (height) => set({ panelHeight: height }),
@@ -165,12 +176,33 @@ export const useUIStore = create<UIState>((set) => ({
   setApiKeyModalOpen: (open) => set({ isApiKeyModalOpen: open }),
 
   setTheme: (themeId) => {
-      applyTheme(themeId);
-      set({ currentTheme: themeId });
+    applyTheme(themeId);
+    set({ currentTheme: themeId });
   },
 
   addConsoleLog: (log) => set(state => ({ consoleOutput: [...state.consoleOutput, log] })),
   clearConsole: () => set({ consoleOutput: [] }),
-  
-  setMarkers: (markers) => set({ markers })
+
+  setMarkers: (markers) => set({ markers }),
+
+  addTerminal: () => set(state => {
+    const id = `term-${Math.random().toString(36).substr(2, 9)}`;
+    const newTerm = { id, title: `Terminal ${state.terminals.length + 1}` };
+    return {
+      terminals: [...state.terminals, newTerm],
+      activeTerminalId: id,
+      activePanelTab: 'TERMINAL',
+    };
+  }),
+
+  removeTerminal: (id) => set(state => {
+    if (state.terminals.length <= 1) return state;
+    const newTerminals = state.terminals.filter(t => t.id !== id);
+    return {
+      terminals: newTerminals,
+      activeTerminalId: state.activeTerminalId === id ? newTerminals[newTerminals.length - 1].id : state.activeTerminalId
+    };
+  }),
+
+  setActiveTerminalId: (id) => set({ activeTerminalId: id, activePanelTab: 'TERMINAL' })
 }));

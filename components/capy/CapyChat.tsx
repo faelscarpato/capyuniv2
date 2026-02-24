@@ -5,6 +5,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { Icon } from '../ui/Icon';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { FileNode } from '../../types';
 
 export const CapyChat: React.FC = () => {
@@ -363,7 +364,7 @@ export const CapyChat: React.FC = () => {
                 }`}>
                     <div 
                         className="prose prose-invert prose-xs max-w-none break-words"
-                        dangerouslySetInnerHTML={{ __html: marked.parse(msg.content) as string }} 
+                        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(msg.content) as string) }} 
                     />
                 </div>
             </div>

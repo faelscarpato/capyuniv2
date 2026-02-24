@@ -17,179 +17,179 @@ import { ApiKeyModal } from '../modals/ApiKeyModal';
 import { applyTheme } from '../../lib/themes';
 
 export const MainLayout: React.FC = () => {
-  const { 
-    toggleSidebar, toggleQuickOpen, toggleCommandPalette, togglePanel, currentTheme,
-    isSidebarOpen, sidebarWidth, setSidebarWidth, setSidebarOpen,
-    isRightSidebarOpen, rightSidebarWidth, setRightSidebarWidth, setRightSidebarOpen,
-    isMobile, setIsMobile, setTutorialOpen
-  } = useUIStore();
+    const {
+        toggleSidebar, toggleQuickOpen, toggleCommandPalette, togglePanel, currentTheme,
+        isSidebarOpen, sidebarWidth, setSidebarWidth, setSidebarOpen,
+        isRightSidebarOpen, rightSidebarWidth, setRightSidebarWidth, setRightSidebarOpen,
+        isMobile, setIsMobile, setTutorialOpen
+    } = useUIStore();
 
-  const [isResizingLeft, setIsResizingLeft] = useState(false);
-  const [isResizingRight, setIsResizingRight] = useState(false);
+    const [isResizingLeft, setIsResizingLeft] = useState(false);
+    const [isResizingRight, setIsResizingRight] = useState(false);
 
-  const resizeStartRef = useRef<{x: number, width: number}>({ x: 0, width: 0 });
+    const resizeStartRef = useRef<{ x: number, width: number }>({ x: 0, width: 0 });
 
-  useEffect(() => {
-    applyTheme(currentTheme);
-    
-    const tutorialSeen = localStorage.getItem('capy_tutorial_seen');
-    if (!tutorialSeen) {
-      const timer = setTimeout(() => {
-        setTutorialOpen(true);
-      }, 1500);
-      return () => clearTimeout(timer);
-    }
-  }, [currentTheme, setTutorialOpen]);
+    useEffect(() => {
+        applyTheme(currentTheme);
 
-  useEffect(() => {
-      const handleResize = () => {
-          setIsMobile(window.innerWidth < 768);
-      };
-      handleResize();
-      window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
-  }, [setIsMobile]);
+        const tutorialSeen = localStorage.getItem('capy_tutorial_seen');
+        if (!tutorialSeen) {
+            const timer = setTimeout(() => {
+                setTutorialOpen(true);
+            }, 1500);
+            return () => clearTimeout(timer);
+        }
+    }, [currentTheme, setTutorialOpen]);
 
-  // Resizing Logic
-  useEffect(() => {
-      const handleMouseMove = (e: MouseEvent) => {
-          if (isResizingLeft) {
-              const delta = e.clientX - resizeStartRef.current.x;
-              const newWidth = Math.max(150, Math.min(600, resizeStartRef.current.width + delta));
-              setSidebarWidth(newWidth);
-          }
-          if (isResizingRight) {
-              const delta = resizeStartRef.current.x - e.clientX;
-              const newWidth = Math.max(200, Math.min(800, resizeStartRef.current.width + delta));
-              setRightSidebarWidth(newWidth);
-          }
-      };
+    useEffect(() => {
+        const handleResize = () => {
+            setIsMobile(window.innerWidth < 768);
+        };
+        handleResize();
+        window.addEventListener('resize', handleResize);
+        return () => window.removeEventListener('resize', handleResize);
+    }, [setIsMobile]);
 
-      const handleMouseUp = () => {
-          setIsResizingLeft(false);
-          setIsResizingRight(false);
-          document.body.style.cursor = 'default';
-          document.body.style.userSelect = 'auto';
-      };
+    // Resizing Logic
+    useEffect(() => {
+        const handleMouseMove = (e: MouseEvent) => {
+            if (isResizingLeft) {
+                const delta = e.clientX - resizeStartRef.current.x;
+                const newWidth = Math.max(150, Math.min(600, resizeStartRef.current.width + delta));
+                setSidebarWidth(newWidth);
+            }
+            if (isResizingRight) {
+                const delta = resizeStartRef.current.x - e.clientX;
+                const newWidth = Math.max(200, Math.min(800, resizeStartRef.current.width + delta));
+                setRightSidebarWidth(newWidth);
+            }
+        };
 
-      if (isResizingLeft || isResizingRight) {
-          window.addEventListener('mousemove', handleMouseMove);
-          window.addEventListener('mouseup', handleMouseUp);
-          document.body.style.userSelect = 'none';
-          document.body.style.cursor = 'col-resize';
-      }
+        const handleMouseUp = () => {
+            setIsResizingLeft(false);
+            setIsResizingRight(false);
+            document.body.style.cursor = 'default';
+            document.body.style.userSelect = 'auto';
+        };
 
-      return () => {
-          window.removeEventListener('mousemove', handleMouseMove);
-          window.removeEventListener('mouseup', handleMouseUp);
-      };
-  }, [isResizingLeft, isResizingRight, setSidebarWidth, setRightSidebarWidth]);
+        if (isResizingLeft || isResizingRight) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+            document.body.style.userSelect = 'none';
+            document.body.style.cursor = 'col-resize';
+        }
 
-  const startResizingLeft = (e: React.MouseEvent) => {
-      e.preventDefault();
-      setIsResizingLeft(true);
-      resizeStartRef.current = { x: e.clientX, width: sidebarWidth };
-  };
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [isResizingLeft, isResizingRight, setSidebarWidth, setRightSidebarWidth]);
 
-  const startResizingRight = (e: React.MouseEvent) => {
-      e.preventDefault();
-      setIsResizingRight(true);
-      resizeStartRef.current = { x: e.clientX, width: rightSidebarWidth };
-  };
+    const startResizingLeft = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsResizingLeft(true);
+        resizeStartRef.current = { x: e.clientX, width: sidebarWidth };
+    };
 
-  const handleBackdropClick = () => {
-      setSidebarOpen(false);
-      setRightSidebarOpen(false);
-  };
+    const startResizingRight = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsResizingRight(true);
+        resizeStartRef.current = { x: e.clientX, width: rightSidebarWidth };
+    };
 
-  const isResizing = isResizingLeft || isResizingRight;
+    const handleBackdropClick = () => {
+        setSidebarOpen(false);
+        setRightSidebarOpen(false);
+    };
 
-  return (
-    <div className="flex flex-col h-[100dvh] w-screen bg-ide-bg text-ide-text overflow-hidden relative">
-      <Topbar />
-      
-      <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
-        
-        {/* Activity Bar (Desktop Only) */}
-        {!isMobile && <ActivityBar />}
-        
-        {/* --- LEFT SIDEBAR --- */}
-        <aside 
-            style={!isMobile ? { width: isSidebarOpen ? sidebarWidth : 0 } : undefined}
-            className={`
+    const isResizing = isResizingLeft || isResizingRight;
+
+    return (
+        <div className="flex flex-col h-[100dvh] w-screen bg-ide-bg text-ide-text overflow-hidden relative">
+            <Topbar />
+
+            <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+
+                {/* Activity Bar (Desktop Only) */}
+                {!isMobile && <ActivityBar />}
+
+                {/* --- LEFT SIDEBAR --- */}
+                <aside
+                    style={!isMobile ? { width: isSidebarOpen ? sidebarWidth : 0 } : undefined}
+                    className={`
                 bg-ide-sidebar flex flex-col transition-all duration-300
-                ${isMobile 
-                    ? `fixed inset-y-0 left-0 z-[110] w-[85vw] max-w-[320px] shadow-2xl transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}` 
-                    : `relative flex-shrink-0 ${isSidebarOpen ? 'border-r border-ide-activity' : 'w-0 overflow-hidden'}`
-                }
+                ${isMobile
+                            ? `fixed inset-y-0 left-0 z-[110] w-[85vw] max-w-[320px] shadow-2xl transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`
+                            : `relative flex-shrink-0 ${isSidebarOpen ? 'border-r border-ide-border' : 'w-0 overflow-hidden'}`
+                        }
             `}
-        >
-           <Sidebar />
-        </aside>
-        
-        {/* Left Resizer (Desktop) */}
-        {!isMobile && isSidebarOpen && (
-            <div 
-                className="w-1 hover:bg-ide-accent/50 cursor-col-resize z-40 transition-colors flex-shrink-0 bg-transparent"
-                onMouseDown={startResizingLeft}
-            />
-        )}
+                >
+                    <Sidebar />
+                </aside>
 
-        {/* --- MAIN EDITOR AREA --- */}
-        <main className={`flex-1 flex flex-col min-w-0 relative h-full bg-ide-bg transition-all duration-300 ${isMobile ? 'pb-[64px]' : ''}`}>
-          <EditorArea />
-          
-          {/* Mobile Backdrop Overlay */}
-          {isMobile && (isSidebarOpen || isRightSidebarOpen) && (
-              <div 
-                  className="fixed inset-0 bg-black/60 z-[100] backdrop-blur-sm animate-in fade-in" 
-                  onClick={handleBackdropClick}
-              />
-          )}
+                {/* Left Resizer (Desktop) */}
+                {!isMobile && isSidebarOpen && (
+                    <div
+                        className="w-px hover:w-1 hover:bg-ide-accent/50 cursor-col-resize z-40 transition-all flex-shrink-0 bg-ide-border"
+                        onMouseDown={startResizingLeft}
+                    />
+                )}
 
-          {/* Desktop Resizing Overlay (Protects iframe events) */}
-          {isResizing && <div className="absolute inset-0 z-[100] cursor-col-resize" />}
+                {/* --- MAIN EDITOR AREA --- */}
+                <main className={`flex-1 flex flex-col min-w-0 min-h-0 relative bg-ide-bg transition-all duration-300 overflow-hidden ${isMobile ? 'pb-[calc(76px+env(safe-area-inset-bottom))]' : ''}`}>
+                    <EditorArea />
 
-          <Panel />
-        </main>
-        
-        {/* Right Resizer (Desktop) */}
-        {!isMobile && isRightSidebarOpen && (
-            <div 
-                className="w-1 hover:bg-ide-accent/50 cursor-col-resize z-40 transition-colors flex-shrink-0 bg-transparent"
-                onMouseDown={startResizingRight}
-            />
-        )}
+                    {/* Mobile Backdrop Overlay */}
+                    {isMobile && (isSidebarOpen || isRightSidebarOpen) && (
+                        <div
+                            className="fixed inset-0 bg-black/40 z-[100] backdrop-blur-md animate-in fade-in duration-300"
+                            onClick={handleBackdropClick}
+                        />
+                    )}
 
-        {/* --- RIGHT SIDEBAR --- */}
-        <aside 
-            style={!isMobile ? { width: isRightSidebarOpen ? rightSidebarWidth : 0 } : undefined}
-            className={`
+                    {/* Desktop Resizing Overlay (Protects iframe events) */}
+                    {isResizing && <div className="absolute inset-0 z-[100] cursor-col-resize" />}
+
+                    <Panel />
+                </main>
+
+                {/* Right Resizer (Desktop) */}
+                {!isMobile && isRightSidebarOpen && (
+                    <div
+                        className="w-px hover:w-1 hover:bg-ide-accent/50 cursor-col-resize z-40 transition-all flex-shrink-0 bg-ide-border"
+                        onMouseDown={startResizingRight}
+                    />
+                )}
+
+                {/* --- RIGHT SIDEBAR --- */}
+                <aside
+                    style={!isMobile ? { width: isRightSidebarOpen ? rightSidebarWidth : 0 } : undefined}
+                    className={`
                 bg-ide-sidebar flex flex-col transition-all duration-300
-                ${isMobile 
-                    ? `fixed inset-y-0 right-0 z-[110] w-[85vw] max-w-[320px] shadow-2xl transform ${isRightSidebarOpen ? 'translate-x-0' : 'translate-x-full'}` 
-                    : `relative flex-shrink-0 ${isRightSidebarOpen ? 'border-l border-ide-activity' : 'w-0 overflow-hidden'}`
-                }
+                ${isMobile
+                            ? `fixed inset-y-0 right-0 z-[110] w-[85vw] max-w-[320px] shadow-2xl transform ${isRightSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`
+                            : `relative flex-shrink-0 ${isRightSidebarOpen ? 'border-l border-ide-border' : 'w-0 overflow-hidden'}`
+                        }
             `}
-        >
-             <RightSidebar />
-        </aside>
-      </div>
-      
-      {/* Mobile Bottom Dock */}
-      {isMobile && <ActivityBar />}
-      
-      {/* Status Bar (Desktop Only) */}
-      {!isMobile && <StatusBar />}
+                >
+                    <RightSidebar />
+                </aside>
+            </div>
 
-      {/* Global Modals */}
-      <QuickOpen />
-      <CommandPalette />
-      <AboutModal />
-      <DocsModal />
-      <TutorialModal />
-      <ApiKeyModal />
-      <ToastContainer />
-    </div>
-  );
+            {/* Mobile Bottom Dock */}
+            {isMobile && <ActivityBar />}
+
+            {/* Status Bar (Desktop Only) */}
+            {!isMobile && <StatusBar />}
+
+            {/* Global Modals */}
+            <QuickOpen />
+            <CommandPalette />
+            <AboutModal />
+            <DocsModal />
+            <TutorialModal />
+            <ApiKeyModal />
+            <ToastContainer />
+        </div>
+    );
 };

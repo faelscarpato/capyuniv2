@@ -8,7 +8,7 @@ import { BlogView } from '../capy/BlogView';
 import { PricingView } from '../capy/PricingView';
 import { ExtensionsView } from '../extensions/ExtensionsView';
 import { GroundingView } from '../grounding/GroundingView';
-import { NanoBananaView } from '../nano/NanoBananaView';
+import { GitView } from '../git/GitView';
 
 export const Sidebar: React.FC = () => {
   const { isSidebarOpen, activeSidebarView } = useUIStore();
@@ -25,11 +25,11 @@ export const Sidebar: React.FC = () => {
       {activeSidebarView === 'blog' && <BlogView />}
       {activeSidebarView === 'pricing' && <PricingView />}
       {activeSidebarView === 'grounding' && <GroundingView />}
-      {activeSidebarView === 'nano-banana' && <NanoBananaView />}
-      
+      {activeSidebarView === 'source_control' && <GitView />}
+
       {['settings', 'run'].includes(activeSidebarView) && (
         <div className="p-4 text-gray-400 text-sm flex items-center justify-center h-full text-center">
-            {`View "${activeSidebarView}" is currently active in the main panel or settings dialog.`}
+          {`View "${activeSidebarView}" is currently active in the main panel or settings dialog.`}
         </div>
       )}
     </div>

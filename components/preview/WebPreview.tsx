@@ -1,8 +1,12 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useUIStore } from '../../stores/uiStore';
 import { FileNode } from '../../types';
 import { Icon } from '../ui/Icon';
+
+const REACT_VERSION = '19.2.3';
+const LUCIDE_VERSION = '0.562.0';
+const ENTRY_PRIORITY = ['src/main.tsx', 'src/index.tsx', 'index.tsx'];
 
 export const WebPreview: React.FC = () => {
   const { files } = useWorkspaceStore();
@@ -11,330 +15,340 @@ export const WebPreview: React.FC = () => {
   const [currentPreviewName, setCurrentPreviewName] = useState('Initializing...');
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  // Listen for console logs from iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
-        if (!event.data) return;
-        
-        if (event.data.type === 'CONSOLE_LOG') {
-            addConsoleLog(`[Preview] ${event.data.message}`);
-        } else if (event.data.type === 'PREVIEW_ERROR') {
-            addConsoleLog(`[Preview Error] ${event.data.message}`);
-        }
+      if (!event.data) return;
+
+      if (event.data.type === 'CONSOLE_LOG') {
+        addConsoleLog(`[Preview] ${event.data.message}`);
+      } else if (event.data.type === 'PREVIEW_ERROR') {
+        addConsoleLog(`[Preview Error] ${event.data.message}`);
+      }
     };
+
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, [addConsoleLog]);
 
-  const generatePreview = () => {
-    const allFiles = Object.values(files) as FileNode[];
-    
-    // --- 1. ENTRY POINT DETECTION ---
-    let entryFile: FileNode | undefined;
-    let isSyntheticHtml = false;
-    let syntheticEntryScriptPath = "";
+  const getFullPath = (node: FileNode): string => {
+    const stateFiles = useWorkspaceStore.getState().files;
+    let path = node.name;
+    let parent = stateFiles[node.parentId || ''];
+    while (parent && parent.id !== 'root') {
+      path = `${parent.name}/${path}`;
+      parent = stateFiles[parent.parentId || ''];
+    }
+    return path;
+  };
 
-    // A. Explicit User Selection
-    if (previewFileId && files[previewFileId]) {
-        const f = files[previewFileId];
-        if (f.name.endsWith('.html')) {
-            entryFile = f;
-        } else if (f.name.match(/\.(jsx?|tsx?)$/)) {
-            entryFile = f;
-            isSyntheticHtml = true;
-            syntheticEntryScriptPath = getFullPath(f);
-        }
+  const allFiles = useMemo(() => Object.values(files).filter((file) => file.type === 'file') as FileNode[], [files]);
+
+  const findByPath = (targetPath: string): FileNode | undefined => {
+    const normalizedTarget = targetPath.replace(/^\/+/, '');
+    return allFiles.find((file) => getFullPath(file) === normalizedTarget);
+  };
+
+  const findEntrypoint = (): FileNode | undefined => {
+    for (const path of ENTRY_PRIORITY) {
+      const direct = findByPath(path);
+      if (direct) return direct;
     }
 
-    // B. Auto-Detect: Look for index.html
-    if (!entryFile) {
-        entryFile = allFiles.find(f => f.name === 'index.html' && (f.parentId === 'root' || !f.parentId));
+    return allFiles.find((file) => file.name.endsWith('.tsx') && /(createRoot\s*\(|ReactDOM\.createRoot\s*\()/.test(file.content || ''));
+  };
+
+  const setEntryError = (message: string) => {
+    setCurrentPreviewName('Preview Error');
+    setSrcDoc(`<!doctype html><html><body style="margin:0;padding:24px;background:#1e1e1e;color:#d4d4d4;font-family:ui-sans-serif,system-ui;"><h2 style="margin:0 0 8px;">Web Preview</h2><p style="margin:0;">${message}</p></body></html>`);
+  };
+
+  const buildBootloader = (payloadBase64: string) => {
+    const template = `
+<script>
+window.process = window.process || { env: { NODE_ENV: 'development' } };
+const sendPreviewError = function(message) {
+  window.parent.postMessage({ type: 'PREVIEW_ERROR', message: String(message || 'Unknown preview error') }, '*');
+};
+window.addEventListener('error', function(event) {
+  const details = [event.message, event.filename, event.lineno, event.colno].filter(Boolean).join(' | ');
+  sendPreviewError(details || 'Runtime error in iframe');
+});
+window.addEventListener('unhandledrejection', function(event) {
+  sendPreviewError('Unhandled Promise Rejection: ' + (event.reason && event.reason.message ? event.reason.message : event.reason || 'Unknown reason'));
+});
+</script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+(async function () {
+  const postLog = function(type, args) {
+    const text = args.map(function(arg) {
+      if (typeof arg === 'string') return arg;
+      try { return JSON.stringify(arg); } catch (e) { return String(arg); }
+    }).join(' ');
+    window.parent.postMessage({ type: type === 'error' ? 'PREVIEW_ERROR' : 'CONSOLE_LOG', message: text }, '*');
+  };
+
+  ['log', 'info', 'warn', 'error', 'debug'].forEach(function(method) {
+    const original = console[method];
+    console[method] = function() {
+      const args = Array.from(arguments);
+      original.apply(console, args);
+      const first = args[0];
+      if (typeof first === 'string' && first.includes('cdn.tailwindcss.com')) return;
+      postLog(method, args);
+    };
+  });
+
+  const raw = '__PAYLOAD__';
+  const files = JSON.parse(decodeURIComponent(escape(atob(raw))));
+  const importMap = { imports: {} };
+
+  importMap.imports['react'] = 'https://esm.sh/react@__REACT__?dev';
+  importMap.imports['react-dom'] = 'https://esm.sh/react-dom@__REACT__?dev';
+  importMap.imports['react-dom/client'] = 'https://esm.sh/react-dom@__REACT__/client?dev';
+  importMap.imports['react/jsx-runtime'] = 'https://esm.sh/react@__REACT__/jsx-runtime?dev';
+  importMap.imports['react/jsx-dev-runtime'] = 'https://esm.sh/react@__REACT__/jsx-dev-runtime?dev';
+  importMap.imports['lucide-react'] = 'https://esm.sh/lucide-react@__LUCIDE__';
+
+  const exts = ['.tsx', '.ts', '.jsx', '.js', '.mjs', '.cjs', '.json', '.css'];
+
+  const normalizePath = function(path) {
+    const out = [];
+    path.split('/').forEach(function(part) {
+      if (!part || part === '.') return;
+      if (part === '..') out.pop();
+      else out.push(part);
+    });
+    return './' + out.join('/');
+  };
+
+  const dirname = function(path) {
+    const index = path.lastIndexOf('/');
+    return index === -1 ? './' : path.slice(0, index + 1);
+  };
+
+  const resolveSpecifier = function(fromPath, specifier) {
+    if (!specifier) return specifier;
+    if (/^(https?:|data:|blob:|node:)/.test(specifier)) return specifier;
+    if (!specifier.startsWith('.') && !specifier.startsWith('/')) return specifier;
+
+    const base = specifier.startsWith('/') ? '.' + specifier : dirname(fromPath) + specifier;
+    const normalized = normalizePath(base);
+
+    const candidates = [normalized];
+    exts.forEach(function(ext) { candidates.push(normalized + ext); });
+    candidates.push(normalized + '/index.tsx');
+    candidates.push(normalized + '/index.ts');
+    candidates.push(normalized + '/index.jsx');
+    candidates.push(normalized + '/index.js');
+
+    for (const candidate of candidates) {
+      if (Object.prototype.hasOwnProperty.call(files, candidate)) {
+        return candidate.endsWith('.css') ? candidate + '?capy-style' : candidate;
+      }
     }
-    
-    // C. Auto-Detect: Look for standard script entry points
-    if (!entryFile) {
-        const candidates = ['src/main.tsx', 'src/index.tsx', 'src/main.jsx', 'src/index.jsx', 'index.js', 'main.js', 'App.tsx', 'App.jsx'];
-        
-        for (const candidatePath of candidates) {
-            const parts = candidatePath.split('/');
-            const name = parts.pop();
-            const parentName = parts.pop(); 
-            
-            const found = allFiles.find(f => {
-                if (f.name !== name) return false;
-                if (!parentName && (f.parentId === 'root' || !f.parentId)) return true;
-                if (parentName) {
-                    const parent = files[f.parentId || ''];
-                    return parent && parent.name === parentName;
-                }
-                return false;
-            });
 
-            if (found) {
-                entryFile = found;
-                isSyntheticHtml = true;
-                syntheticEntryScriptPath = getFullPath(found);
-                break;
-            }
-        }
+    return normalized;
+  };
+
+  const rewriteSpecifiers = function(code, fromPath) {
+    let out = code;
+    out = out.replace(/(import\\s+(?:[^'"\\n]*?\\s+from\\s+)?)(['"])([^'"\\n]+)\\2/g, function(_, prefix, quote, specifier) {
+      return prefix + quote + resolveSpecifier(fromPath, specifier) + quote;
+    });
+    out = out.replace(/(export\\s+(?:[^'"\\n]*?\\s+from\\s+))(['"])([^'"\\n]+)\\2/g, function(_, prefix, quote, specifier) {
+      return prefix + quote + resolveSpecifier(fromPath, specifier) + quote;
+    });
+    out = out.replace(/(import\\s*\\(\\s*)(['"])([^'"\\n]+)\\2(\\s*\\))/g, function(_, p1, quote, specifier, p2) {
+      return p1 + quote + resolveSpecifier(fromPath, specifier) + quote + p2;
+    });
+    return out;
+  };
+
+  const createModule = function(code) {
+    return URL.createObjectURL(new Blob([code], { type: 'text/javascript' }));
+  };
+
+  const registerAliases = function(path, url) {
+    importMap.imports[path] = url;
+    const noExt = path.replace(/\\.[^/.]+$/, '');
+    if (noExt !== path) importMap.imports[noExt] = url;
+
+    if (path.endsWith('/index.tsx') || path.endsWith('/index.ts') || path.endsWith('/index.jsx') || path.endsWith('/index.js')) {
+      const dirAlias = path.replace(/\\/index\\.[^/.]+$/, '');
+      importMap.imports[dirAlias] = url;
     }
+  };
 
-    if (!entryFile) {
-        setSrcDoc(`<html><body style="color:#888; font-family:sans-serif; text-align:center; padding-top:40px; background:#1e1e1e;">
-            <div style="font-size: 24px; margin-bottom: 10px;">⚠️ No Entry Point Found</div>
-            <p>Please create an <strong>index.html</strong> or a <strong>src/main.tsx</strong> file.</p>
-        </body></html>`);
-        setCurrentPreviewName('No Entry Point');
-        return;
-    }
+  try {
+    Object.keys(files).filter(function(path) { return path.endsWith('.css'); }).forEach(function(cssPath) {
+      const styleId = btoa(cssPath);
+      const cssText = JSON.stringify(files[cssPath] || '');
+      const moduleCode = [
+        'const styleId = ' + JSON.stringify(styleId) + ';',
+        'if (!document.querySelector(\'style[data-capy-style="\' + styleId + '\'"])) {',
+        '  const style = document.createElement(\'style\');',
+        '  style.setAttribute(\'data-capy-style\', styleId);',
+        '  style.textContent = ' + cssText + ';',
+        '  document.head.appendChild(style);',
+        '}',
+        'export default {};'
+      ].join('\\n');
 
-    setCurrentPreviewName(isSyntheticHtml ? `Wrapper for ${entryFile.name}` : entryFile.name);
-
-    // --- 2. FILE MAPPING & NORMALIZATION ---
-    // We create a map where keys are "./path/to/file.ext"
-    const fileMap: Record<string, string> = {};
-    
-    allFiles.forEach(f => {
-        if (f.type !== 'file') return;
-        let path = getFullPath(f);
-        if (!path.startsWith('./')) path = './' + path;
-        fileMap[path] = f.content || '';
+      const moduleUrl = createModule(moduleCode);
+      registerAliases(cssPath + '?capy-style', moduleUrl);
     });
 
-    // --- 3. PAYLOAD ENCODING ---
-    // We encode the fileMap to Base64 to safely inject it into the HTML without worrying about quoting/escaping issues.
-    // We use a safe base64 encoder that handles UTF-8 strings.
-    const safeJson = JSON.stringify(fileMap);
-    const payloadBase64 = btoa(unescape(encodeURIComponent(safeJson)));
+    Object.keys(files)
+      .filter(function(path) { return /\\.(tsx?|jsx?|mjs|cjs|js)$/.test(path); })
+      .forEach(function(filePath) {
+        const rewritten = rewriteSpecifiers(files[filePath], filePath);
+        const transformed = Babel.transform(rewritten, {
+          presets: [
+            ['react', { runtime: 'automatic', development: true }],
+            ['typescript', { isTSX: true, allExtensions: true }]
+          ],
+          filename: filePath,
+          sourceMaps: 'inline'
+        });
 
-    // --- 4. HTML GENERATION ---
-    const rawHtml = isSyntheticHtml ? 
-        `<!DOCTYPE html>
-         <html lang="en">
-            <head>
-                <meta charset="UTF-8" />
-                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-                <title>Capy App</title>
-            </head>
-            <body>
-                <div id="root"></div>
-                <script type="module" src="./${syntheticEntryScriptPath}"></script>
-            </body>
-         </html>` 
-        : (entryFile.content || '');
+        const moduleUrl = createModule(transformed.code || rewritten);
+        registerAliases(filePath, moduleUrl);
+      });
 
-    // --- 5. BOOTLOADER SCRIPT ---
-    // This script runs inside the iframe. It decodes the files, transforms them, creates blobs, and runs the app.
-    const bootloader = `
-    <script>
-        // 1. Error Trap
-        window.onerror = function(msg, url, line, col, error) {
-            window.parent.postMessage({ type: 'PREVIEW_ERROR', message: msg, line: line }, '*');
-            return false;
-        };
-        window.onunhandledrejection = function(e) {
-            window.parent.postMessage({ type: 'PREVIEW_ERROR', message: 'Unhandled Promise Rejection: ' + e.reason }, '*');
-        };
+    const importMapEl = document.createElement('script');
+    importMapEl.type = 'importmap';
+    importMapEl.textContent = JSON.stringify(importMap);
+    document.head.appendChild(importMapEl);
 
-        // 2. Environment Shim
-        window.process = { env: { NODE_ENV: 'development' } };
-    </script>
-    
-    <!-- Load Babel & Tailwind -->
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <script>
-        (async function() {
-            try {
-                // 3. Decode Payload
-                const raw = "${payloadBase64}";
-                const fileMap = JSON.parse(decodeURIComponent(escape(atob(raw))));
-
-                // 4. Console Proxy
-                const _log = console.log;
-                console.log = (...args) => {
-                    _log(...args);
-                    // Filter out tailwind cdn warnings
-                    if (args[0] && typeof args[0] === 'string' && args[0].includes('cdn.tailwindcss.com')) return;
-                    window.parent.postMessage({ type: 'CONSOLE_LOG', message: args.join(' ') }, '*');
-                };
-
-                // 5. Transform & Prepare Modules
-                const blobs = {};
-                const importMap = { imports: {} };
-                
-                // Add External Deps
-                importMap.imports['react'] = 'https://esm.sh/react@18.2.0?dev';
-                importMap.imports['react-dom/client'] = 'https://esm.sh/react-dom@18.2.0/client?dev';
-                importMap.imports['react-dom'] = 'https://esm.sh/react-dom@18.2.0?dev';
-                // Add Common Icons lib
-                importMap.imports['lucide-react'] = 'https://esm.sh/lucide-react@0.292.0';
-
-                // Helper: CSS Injection
-                function injectCSS(path, content) {
-                    const style = document.createElement('style');
-                    style.setAttribute('data-path', path);
-                    style.textContent = content;
-                    document.head.appendChild(style);
-                }
-
-                // Transform Loop
-                for (const path in fileMap) {
-                    let code = fileMap[path];
-
-                    // Handle CSS
-                    if (path.endsWith('.css')) {
-                        injectCSS(path, code);
-                        continue; // Don't create blob for CSS (unless we want to support import css, handled below)
-                    }
-
-                    // Handle JS/TS/JSX
-                    if (path.match(/\.(tsx?|jsx?|js)$/)) {
-                        try {
-                            // Strip CSS imports (naive) and inject them if found? 
-                            // For simplicity, we assume CSS is global or side-effect imported.
-                            // We can just comment them out to prevent runtime errors.
-                            code = code.replace(/import\s+['"]([^'"]+\.css)['"];?/g, (match, cssPath) => {
-                                // We rely on the fact that we looped over all files and injected CSS already.
-                                return "// " + match; 
-                            });
-
-                            const result = Babel.transform(code, {
-                                presets: [
-                                    ['react', { runtime: 'automatic' }], 
-                                    ['typescript', { isTSX: true, allExtensions: true }]
-                                ],
-                                filename: path,
-                                sourceMaps: 'inline'
-                            });
-                            code = result.code;
-                        } catch (e) {
-                            console.error("Babel Error in " + path, e);
-                            window.parent.postMessage({ type: 'PREVIEW_ERROR', message: 'Babel: ' + e.message + ' in ' + path }, '*');
-                            continue;
-                        }
-                    }
-
-                    const blob = new Blob([code], { type: 'text/javascript' });
-                    const blobUrl = URL.createObjectURL(blob);
-                    
-                    // Register exact path
-                    importMap.imports[path] = blobUrl;
-                    
-                    // Register extension-less aliases ( ./App -> ./App.tsx )
-                    const noExt = path.replace(/\.[^/.]+$/, "");
-                    if (noExt !== path) {
-                         importMap.imports[noExt] = blobUrl;
-                         // Handle index files ( ./components/Header -> ./components/Header/index.tsx )
-                         if (path.endsWith('/index.tsx') || path.endsWith('/index.jsx') || path.endsWith('/index.js')) {
-                             const dir = path.substring(0, path.lastIndexOf('/index'));
-                             importMap.imports[dir] = blobUrl;
-                         }
-                    }
-                }
-
-                // 6. Inject Import Map
-                const mapEl = document.createElement('script');
-                mapEl.type = "importmap";
-                mapEl.textContent = JSON.stringify(importMap);
-                document.head.appendChild(mapEl);
-
-                // 7. Rewiring Entry Scripts
-                // We look for the entry script tag in the original HTML and replace it with a module import
-                // that utilizes our map.
-                
-                // Wait for DOM
-                if (document.readyState === 'loading') {
-                    await new Promise(r => document.addEventListener('DOMContentLoaded', r));
-                }
-
-                const scripts = document.querySelectorAll('script[src]');
-                scripts.forEach(s => {
-                    const src = s.getAttribute('src');
-                    // Check if it's a local file (starts with ./ or no protocol)
-                    if (src && (src.startsWith('./') || !src.match(/^https?:/))) {
-                        const normalized = src.startsWith('./') ? src : './' + src;
-                        if (importMap.imports[normalized] || importMap.imports[normalized.replace(/\.[^/.]+$/, "")]) {
-                            const newScript = document.createElement('script');
-                            newScript.type = 'module';
-                            newScript.textContent = "import '" + normalized + "';";
-                            s.replaceWith(newScript);
-                        }
-                    }
-                });
-
-            } catch (err) {
-                console.error("Bootloader Error", err);
-                window.parent.postMessage({ type: 'PREVIEW_ERROR', message: 'Bootloader: ' + err.message }, '*');
-            }
-        })();
-    </script>
-    `;
-
-    // Inject before body close or at end
-    let finalHtml = rawHtml;
-    if (finalHtml.includes('</body>')) {
-        finalHtml = finalHtml.replace('</body>', bootloader + '</body>');
-    } else {
-        finalHtml += bootloader;
+    if (document.readyState === 'loading') {
+      await new Promise(function(resolve) { document.addEventListener('DOMContentLoaded', resolve, { once: true }); });
     }
+
+    const localScripts = Array.from(document.querySelectorAll('script[src]')).filter(function(script) {
+      const src = script.getAttribute('src') || '';
+      return src && !/^(https?:|data:|blob:)/.test(src);
+    });
+
+    localScripts.forEach(function(script) {
+      const src = script.getAttribute('src') || '';
+      const normalized = src.startsWith('.') ? src : './' + src.replace(/^\\//, '');
+      const mapped = importMap.imports[normalized] || importMap.imports[normalized.replace(/\\.[^/.]+$/, '')];
+      if (!mapped) return;
+
+      const moduleScript = document.createElement('script');
+      moduleScript.type = 'module';
+      moduleScript.textContent = 'import ' + JSON.stringify(normalized) + ';';
+      script.replaceWith(moduleScript);
+    });
+  } catch (error) {
+    sendPreviewError(error && error.message ? error.message : error);
+  }
+})();
+</script>
+`;
+
+    return template
+      .replace('__PAYLOAD__', payloadBase64)
+      .replaceAll('__REACT__', REACT_VERSION)
+      .replace('__LUCIDE__', LUCIDE_VERSION);
+  };
+
+  const generatePreview = () => {
+    const fileMap: Record<string, string> = {};
+    allFiles.forEach((file) => {
+      const fullPath = `./${getFullPath(file).replace(/^\.\//, '')}`;
+      fileMap[fullPath] = file.content || '';
+    });
+
+    let entryFile: FileNode | undefined;
+    let useSyntheticHtml = false;
+    let syntheticEntryPath = '';
+
+    if (previewFileId && files[previewFileId] && files[previewFileId].type === 'file') {
+      const selected = files[previewFileId];
+      if (selected.name.endsWith('.html')) {
+        entryFile = selected;
+      } else if (selected.name.match(/\.(tsx?|jsx?)$/)) {
+        entryFile = selected;
+        useSyntheticHtml = true;
+        syntheticEntryPath = `./${getFullPath(selected)}`;
+      }
+    }
+
+    if (!entryFile) {
+      entryFile = allFiles.find((file) => file.name === 'index.html' && (file.parentId === 'root' || !file.parentId));
+    }
+
+    if (!entryFile) {
+      const reactEntry = findEntrypoint();
+      if (reactEntry) {
+        entryFile = reactEntry;
+        useSyntheticHtml = true;
+        syntheticEntryPath = `./${getFullPath(reactEntry)}`;
+      }
+    }
+
+    if (!entryFile) {
+      setEntryError('Nenhum entrypoint React encontrado. Tente criar src/main.tsx, src/index.tsx ou index.tsx.');
+      return;
+    }
+
+    setCurrentPreviewName(useSyntheticHtml ? `Wrapper for ${entryFile.name}` : entryFile.name);
+
+    const rawHtml = useSyntheticHtml
+      ? `<!doctype html><html lang="en"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><title>Capy App</title></head><body><div id="root"></div><script type="module" src="${syntheticEntryPath}"></script></body></html>`
+      : (entryFile.content || '');
+
+    const payloadBase64 = btoa(unescape(encodeURIComponent(JSON.stringify(fileMap))));
+    const bootloader = buildBootloader(payloadBase64);
+
+    const finalHtml = rawHtml.includes('</body>')
+      ? rawHtml.replace('</body>', `${bootloader}</body>`)
+      : `${rawHtml}${bootloader}`;
 
     setSrcDoc(finalHtml);
   };
 
-  // Helper to reconstruct path from store
-  const getFullPath = (node: FileNode): string => {
-      const { files } = useWorkspaceStore.getState();
-      let path = node.name;
-      let parent = files[node.parentId || ''];
-      while (parent && parent.id !== 'root') {
-          path = `${parent.name}/${path}`;
-          parent = files[parent.parentId || ''];
-      }
-      return path;
-  };
-
-  // Debounced Refresh
   useEffect(() => {
-      const timer = setTimeout(generatePreview, 1000);
-      return () => clearTimeout(timer);
+    const timer = setTimeout(generatePreview, 700);
+    return () => clearTimeout(timer);
   }, [files, previewFileId]);
 
   const openInNewTab = () => {
-      const blob = new Blob([srcDoc], { type: 'text/html' });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+    const blob = new Blob([srcDoc], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
   };
 
   return (
     <div className="flex flex-col h-full bg-white">
-        <div className="h-8 bg-gray-100 border-b border-gray-300 flex items-center px-2 justify-between flex-shrink-0 select-none">
-            <div className="flex items-center gap-2 text-xs text-gray-600">
-                <Icon name="Globe" size={14} />
-                <span className="font-mono max-w-[200px] truncate" title={currentPreviewName}>
-                    {currentPreviewName}
-                </span>
-            </div>
-            <div className="flex items-center gap-2">
-                <button onClick={openInNewTab} className="text-gray-500 hover:text-gray-900 flex items-center gap-1 text-xs px-1 py-0.5 rounded hover:bg-gray-200">
-                    <Icon name="ExternalLink" size={12} /> Open
-                </button>
-                <button onClick={generatePreview} className="text-gray-500 hover:text-gray-900 px-1 py-0.5 rounded hover:bg-gray-200" title="Force Reload">
-                    <Icon name="RefreshCw" size={12} />
-                </button>
-            </div>
+      <div className="h-8 bg-gray-100 border-b border-gray-300 flex items-center px-2 justify-between flex-shrink-0 select-none">
+        <div className="flex items-center gap-2 text-xs text-gray-600">
+          <Icon name="Globe" size={14} />
+          <span className="font-mono max-w-[240px] truncate" title={currentPreviewName}>
+            {currentPreviewName}
+          </span>
         </div>
-        <div className="flex-1 relative bg-white overflow-hidden">
-            <iframe 
-                ref={iframeRef}
-                title="preview"
-                srcDoc={srcDoc}
-                className="w-full h-full border-none"
-                // relaxed sandbox for development prototype
-                sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups" 
-            />
+        <div className="flex items-center gap-2">
+          <button onClick={openInNewTab} className="text-gray-500 hover:text-gray-900 flex items-center gap-1 text-xs px-1 py-0.5 rounded hover:bg-gray-200">
+            <Icon name="ExternalLink" size={12} /> Open
+          </button>
+          <button onClick={generatePreview} className="text-gray-500 hover:text-gray-900 px-1 py-0.5 rounded hover:bg-gray-200" title="Force Reload">
+            <Icon name="RefreshCw" size={12} />
+          </button>
         </div>
+      </div>
+      <div className="flex-1 relative bg-white overflow-hidden">
+        <iframe
+          ref={iframeRef}
+          title="preview"
+          srcDoc={srcDoc}
+          className="w-full h-full border-none"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+        />
+      </div>
     </div>
   );
 };

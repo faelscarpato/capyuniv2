@@ -10,26 +10,35 @@ const icons: Record<NotificationType, string> = {
 };
 
 const colors: Record<NotificationType, string> = {
-  info: 'bg-blue-600',
-  success: 'bg-green-600',
-  warning: 'bg-yellow-600',
-  error: 'bg-red-600'
+  info: 'border-blue-500/50',
+  success: 'border-green-500/50',
+  warning: 'border-yellow-500/50',
+  error: 'border-red-500/50'
+};
+
+const textColors: Record<NotificationType, string> = {
+  info: 'text-blue-400',
+  success: 'text-green-400',
+  warning: 'text-yellow-400',
+  error: 'text-red-400'
 };
 
 export const ToastContainer: React.FC = () => {
   const { notifications, removeNotification } = useNotificationStore();
 
   return (
-    <div className="fixed bottom-10 right-4 z-[100] flex flex-col gap-2">
+    <div className="fixed bottom-10 right-4 z-[100] flex flex-col gap-3">
       {notifications.map((note) => (
-        <div 
+        <div
           key={note.id}
-          className={`${colors[note.type]} text-white px-4 py-3 rounded shadow-lg flex items-center gap-3 min-w-[300px] animate-in slide-in-from-right fade-in duration-300`}
+          className={`bg-ide-panel/80 backdrop-blur-xl border-l-4 ${colors[note.type]} text-white px-5 py-4 rounded-xl shadow-2xl flex items-center gap-4 min-w-[320px] animate-in slide-in-from-right fade-in duration-500`}
         >
-          <Icon name={icons[note.type] as any} size={20} />
-          <span className="flex-1 text-sm font-medium">{note.message}</span>
-          <button onClick={() => removeNotification(note.id)} className="hover:bg-white/20 rounded p-1">
-            <Icon name="X" size={14} />
+          <div className={`${textColors[note.type]} flex-shrink-0`}>
+            <Icon name={icons[note.type] as any} size={22} />
+          </div>
+          <span className="flex-1 text-sm font-semibold tracking-wide">{note.message}</span>
+          <button onClick={() => removeNotification(note.id)} className="hover:bg-white/10 rounded-lg p-1.5 transition-colors">
+            <Icon name="X" size={16} className="text-ide-muted" />
           </button>
         </div>
       ))}
