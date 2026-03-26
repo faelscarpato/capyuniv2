@@ -2,14 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { MainLayout } from './components/layout/MainLayout';
 import { WelcomeScreen } from './components/layout/WelcomeScreen';
 import { useWorkspaceStore } from './stores/workspaceStore';
-import { useUIStore } from './stores/uiStore';
+import { useOnboardingStore } from './features/onboarding/store/onboardingStore';
 import registerServiceWorker from './registerServiceWorker';
 
 const App: React.FC = () => {
   const { initialize } = useWorkspaceStore();
-  const { currentTheme } = useUIStore();
+  const { hasCompletedWelcome, markWelcomeCompleted } = useOnboardingStore();
   const [loading, setLoading] = useState(true);
-  const [showWelcome, setShowWelcome] = useState(true);
 
   useEffect(() => {
     initialize().then(() => {
@@ -27,8 +26,8 @@ const App: React.FC = () => {
     );
   }
 
-  if (showWelcome) {
-      return <WelcomeScreen onLaunch={() => setShowWelcome(false)} />;
+  if (!hasCompletedWelcome) {
+      return <WelcomeScreen onLaunch={markWelcomeCompleted} />;
   }
 
   return <MainLayout />;

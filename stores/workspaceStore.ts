@@ -7,6 +7,7 @@ import { getLanguageFromFilename } from '../lib/fileUtils';
 import { useNotificationStore } from './notificationStore';
 import { terminalSync } from '../lib/terminalSync';
 import { triggerEditorHook } from '../lib/extensions';
+import { localSnapshotService } from '../platform/snapshots/services/localSnapshotService';
 
 interface PendingScroll {
   fileId: string;
@@ -40,6 +41,7 @@ interface WorkspaceActions {
   importWorkspaceData: (newFiles: FileSystem) => void;
   getPathForId: (id: string) => string;
   syncAllToPTY: () => void;
+  refreshFromPTY: () => void;
 }
 
 const deleteRecursive = (files: FileSystem, id: string): FileSystem => {
@@ -288,6 +290,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>((set,
 
   saveAll: () => {
     saveWorkspace(get());
+    localSnapshotService.create(get().files, 'manual').catch(() => {
+      // Snapshot errors should never block save.
+    });
     set({ unsavedChanges: new Set() });
     useNotificationStore.getState().addNotification('success', 'Workspace Saved');
   },
@@ -335,6 +340,9 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>((set,
   importWorkspaceData: (newFiles) => {
     set({ files: newFiles, openTabs: [], activeTabId: null, expandedFolders: ['root'] });
     saveWorkspace(get());
+    localSnapshotService.create(newFiles, 'import').catch(() => {
+      // Snapshot errors should never block import.
+    });
   },
 
   refreshFromPTY: () => {
@@ -351,11 +359,6 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>((set,
       pathArr.unshift(current.name);
     }
     return pathArr.join('/');
-  },
-
-  getFileByPath: (path: string) => {
-    const { files, getPathForId } = get();
-    return Object.values(files).find(node => getPathForId(node.id) === path);
   },
 
   syncAllToPTY: () => {
@@ -378,6 +381,10 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>((set,
           }
         }));
       }
+    };
+
+    terminalSync.onError = (message) => {
+      useNotificationStore.getState().addNotification('error', `Terminal sync: ${message}`);
     };
 
     // Connect scan listener
@@ -427,7 +434,12 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>((set,
 
       const combinedFiles = { ...newFiles, ...scannedFlat };
       set({ files: combinedFiles });
-      saveWorkspace({ files: combinedFiles } as any);
+      saveWorkspace({
+        files: combinedFiles,
+        openTabs: get().openTabs,
+        activeTabId: get().activeTabId,
+        expandedFolders: get().expandedFolders
+      });
       useNotificationStore.getState().addNotification('success', 'Arquivos atualizados!');
     };
   }

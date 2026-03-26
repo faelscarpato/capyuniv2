@@ -6,38 +6,119 @@ import { WebSocketServer } from 'ws';
 import * as pty from 'node-pty';
 
 const PORT = Number(process.env.PTY_PORT || 8787);
-const WORKSPACE_DIR = path.join(process.cwd(), '.workspace');
+const TERMINAL_MODE = process.env.CAPY_TERMINAL_MODE === 'hardened' ? 'hardened' : 'dev';
+const LISTEN_HOST = TERMINAL_MODE === 'hardened' ? '127.0.0.1' : '0.0.0.0';
 
+const MAX_MESSAGE_BYTES = 1024 * 512;
+const MAX_INPUT_LENGTH = 8192;
+const MAX_FILE_BYTES = 1024 * 1024;
+const MAX_SCAN_NODES = 5000;
+
+const WORKSPACE_DIR = path.join(process.cwd(), '.workspace');
 if (!fs.existsSync(WORKSPACE_DIR)) {
   fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
 }
 
-const isLoopback = (address) =>
+const ALLOWED_ORIGINS = (process.env.CAPY_ALLOWED_ORIGINS || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const isLoopbackAddress = (address = '') =>
   address === '127.0.0.1' ||
   address === '::1' ||
-  address === '::ffff:127.0.0.1' ||
-  address === '::ffff:localhost' ||
-  address.startsWith('192.168.') || // Allow local network
-  address.startsWith('10.') ||
-  address.startsWith('172.');
+  address === '::ffff:127.0.0.1';
+
+const isPrivateAddress = (address = '') => {
+  const ip = address.replace('::ffff:', '');
+  if (/^10\./.test(ip) || /^192\.168\./.test(ip)) return true;
+
+  const match172 = ip.match(/^172\.(\d+)\./);
+  if (match172) {
+    const second = Number(match172[1]);
+    return second >= 16 && second <= 31;
+  }
+  return false;
+};
+
+const isAllowedRemote = (remoteAddress = '') => {
+  if (TERMINAL_MODE === 'hardened') {
+    return isLoopbackAddress(remoteAddress);
+  }
+  return isLoopbackAddress(remoteAddress) || isPrivateAddress(remoteAddress);
+};
+
+const isLocalOrigin = (origin) => {
+  try {
+    const parsed = new URL(origin);
+    const hostname = parsed.hostname;
+    return hostname === 'localhost' || isLoopbackAddress(hostname) || isPrivateAddress(hostname);
+  } catch {
+    return false;
+  }
+};
 
 const isAllowedOrigin = (origin) => {
-  if (!origin) return true;
-  // Allow any local origin for dev
-  return true;
+  if (!origin) return TERMINAL_MODE === 'dev';
+
+  if (TERMINAL_MODE === 'hardened') {
+    return ALLOWED_ORIGINS.includes(origin);
+  }
+
+  return isLocalOrigin(origin) || ALLOWED_ORIGINS.includes(origin);
+};
+
+const toSafeWorkspacePath = (rawPath, options = {}) => {
+  const { allowRoot = false, absoluteFromWorkspaceRoot = false } = options;
+
+  if (typeof rawPath !== 'string') {
+    throw new Error('Path must be a string.');
+  }
+
+  let candidate = rawPath.replace(/\0/g, '').trim();
+  if (absoluteFromWorkspaceRoot && candidate.startsWith('/')) {
+    candidate = candidate.replace(/^\/+/, '');
+  }
+
+  if (!candidate) {
+    if (allowRoot) return WORKSPACE_DIR;
+    throw new Error('Path cannot be empty.');
+  }
+
+  if (path.isAbsolute(candidate)) {
+    throw new Error('Absolute path is not allowed.');
+  }
+
+  const normalized = path.normalize(candidate);
+  if (normalized.startsWith('..') || normalized.includes(`${path.sep}..${path.sep}`) || normalized === '..') {
+    throw new Error('Path traversal is not allowed.');
+  }
+
+  const resolved = path.resolve(WORKSPACE_DIR, normalized);
+  if (resolved !== WORKSPACE_DIR && !resolved.startsWith(`${WORKSPACE_DIR}${path.sep}`)) {
+    throw new Error('Path escapes workspace boundary.');
+  }
+
+  return resolved;
+};
+
+const sendSocketError = (socket, message) => {
+  if (socket.readyState === 1) {
+    socket.send(JSON.stringify({ type: 'error', message }));
+  }
 };
 
 const server = http.createServer((req, res) => {
   res.statusCode = 200;
   res.setHeader('content-type', 'application/json');
-  res.end(JSON.stringify({ ok: true, service: 'capy-pty' }));
+  res.end(JSON.stringify({ ok: true, service: 'capy-pty', mode: TERMINAL_MODE }));
 });
 
 const wss = new WebSocketServer({ noServer: true });
 
 wss.on('connection', (socket, req) => {
-  const remoteIp = req.socket.remoteAddress;
-  console.log(`[capy-pty] New connection from ${remoteIp}`);
+  const remoteIp = req.socket.remoteAddress || '';
+  console.log(`[capy-pty] Connection accepted from ${remoteIp} (mode=${TERMINAL_MODE})`);
 
   const shell = process.platform === 'win32' ? 'powershell.exe' : 'bash';
   const shellArgs = process.platform === 'win32' ? ['-NoLogo'] : [];
@@ -51,28 +132,44 @@ wss.on('connection', (socket, req) => {
       env: process.env
     });
 
-    const writeSafe = (data) => {
-      if (socket.readyState === 1) socket.send(data);
-    };
-
-    const disposable = ptyProcess.onData((data) => writeSafe(data));
+    const disposable = ptyProcess.onData((data) => {
+      if (socket.readyState === 1) {
+        socket.send(data);
+      }
+    });
 
     ptyProcess.onExit(() => {
-      console.log(`[capy-pty] PTY Process exited`);
-      try { socket.close(); } catch { }
+      try {
+        socket.close();
+      } catch {
+        // noop
+      }
     });
 
     socket.on('message', (raw) => {
+      if (raw.length > MAX_MESSAGE_BYTES) {
+        sendSocketError(socket, 'Message too large.');
+        return;
+      }
+
       let msg = null;
       try {
         msg = JSON.parse(raw.toString());
       } catch {
+        sendSocketError(socket, 'Invalid JSON payload.');
         return;
       }
 
-      if (!msg || typeof msg !== 'object') return;
+      if (!msg || typeof msg !== 'object' || typeof msg.type !== 'string') {
+        sendSocketError(socket, 'Invalid message format.');
+        return;
+      }
 
       if (msg.type === 'input' && typeof msg.data === 'string') {
+        if (msg.data.length > MAX_INPUT_LENGTH) {
+          sendSocketError(socket, 'Input exceeds maximum size.');
+          return;
+        }
         ptyProcess.write(msg.data);
         return;
       }
@@ -86,40 +183,67 @@ wss.on('connection', (socket, req) => {
         return;
       }
 
-      // File Sync Actions
       if (msg.type === 'writeFile' && typeof msg.path === 'string' && typeof msg.content === 'string') {
-        const fullPath = path.join(WORKSPACE_DIR, msg.path);
-        const dir = path.dirname(fullPath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        fs.writeFileSync(fullPath, msg.content);
-        console.log(`[capy-pty] File synced: ${msg.path}`);
+        try {
+          const contentBytes = Buffer.byteLength(msg.content, 'utf8');
+          if (contentBytes > MAX_FILE_BYTES) {
+            sendSocketError(socket, 'File write exceeds maximum size.');
+            return;
+          }
+
+          const fullPath = toSafeWorkspacePath(msg.path);
+          const dir = path.dirname(fullPath);
+          if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+          fs.writeFileSync(fullPath, msg.content, 'utf8');
+        } catch (error) {
+          sendSocketError(socket, error instanceof Error ? error.message : 'Failed to write file.');
+        }
         return;
       }
 
       if (msg.type === 'deleteFile' && typeof msg.path === 'string') {
-        const fullPath = path.join(WORKSPACE_DIR, msg.path);
-        if (fs.existsSync(fullPath)) {
-          fs.unlinkSync(fullPath);
-          console.log(`[capy-pty] File deleted: ${msg.path}`);
+        try {
+          const fullPath = toSafeWorkspacePath(msg.path);
+          if (fs.existsSync(fullPath)) {
+            const stat = fs.statSync(fullPath);
+            if (stat.isDirectory()) {
+              fs.rmSync(fullPath, { recursive: true, force: true });
+            } else {
+              fs.unlinkSync(fullPath);
+            }
+          }
+        } catch (error) {
+          sendSocketError(socket, error instanceof Error ? error.message : 'Failed to delete path.');
         }
         return;
       }
 
       if (msg.type === 'scan') {
+        let scannedNodes = 0;
+
         const scan = (dir, parentPath = '') => {
           const results = [];
           const items = fs.readdirSync(dir);
           for (const item of items) {
-            // IGNORE .git folder and other heavy stuff
             if (item === '.git' || item === 'node_modules') continue;
+
+            scannedNodes += 1;
+            if (scannedNodes > MAX_SCAN_NODES) {
+              throw new Error('Scan limit exceeded.');
+            }
 
             const fullPath = path.join(dir, item);
             const relPath = parentPath ? `${parentPath}/${item}` : item;
             const stat = fs.statSync(fullPath);
+
             if (stat.isDirectory()) {
-              results.push({ name: item, type: 'folder', path: relPath, children: scan(fullPath, relPath) });
+              results.push({
+                name: item,
+                type: 'folder',
+                path: relPath,
+                children: scan(fullPath, relPath)
+              });
             } else {
-              // Only send metadata, don't read content yet to avoid heavy messages
               results.push({ name: item, type: 'file', path: relPath });
             }
           }
@@ -129,43 +253,62 @@ wss.on('connection', (socket, req) => {
         try {
           const structure = scan(WORKSPACE_DIR);
           socket.send(JSON.stringify({ type: 'scanResult', structure }));
-        } catch (err) {
-          console.error(`[capy-pty] Scan failed:`, err);
+        } catch (error) {
+          sendSocketError(socket, error instanceof Error ? error.message : 'Scan failed.');
         }
         return;
       }
 
       if (msg.type === 'readFile' && typeof msg.path === 'string') {
         try {
-          const fullPath = path.join(WORKSPACE_DIR, msg.path);
-          if (fs.existsSync(fullPath)) {
-            const content = fs.readFileSync(fullPath, 'utf8');
-            socket.send(JSON.stringify({ type: 'fileContent', path: msg.path, content }));
+          const fullPath = toSafeWorkspacePath(msg.path);
+          if (!fs.existsSync(fullPath)) {
+            sendSocketError(socket, 'File not found.');
+            return;
           }
-        } catch (err) {
-          console.error(`[capy-pty] Read failed:`, err);
+
+          const stat = fs.statSync(fullPath);
+          if (stat.size > MAX_FILE_BYTES) {
+            sendSocketError(socket, 'File exceeds read size limit.');
+            return;
+          }
+
+          const content = fs.readFileSync(fullPath, 'utf8');
+          socket.send(JSON.stringify({ type: 'fileContent', path: msg.path, content }));
+        } catch (error) {
+          sendSocketError(socket, error instanceof Error ? error.message : 'Read failed.');
         }
         return;
       }
 
-      if (msg.type === 'setCwd' && typeof msg.cwd === 'string' && msg.cwd.trim()) {
-        const cwd = msg.cwd.replace(/"/g, '\\"');
-        if (process.platform === 'win32') {
-          ptyProcess.write(`cd "${cwd}"\r`);
-        } else {
-          ptyProcess.write(`cd "${cwd}"\n`);
+      if (msg.type === 'setCwd' && typeof msg.cwd === 'string') {
+        try {
+          const targetPath = msg.cwd.trim() === '/' ? WORKSPACE_DIR : toSafeWorkspacePath(msg.cwd, {
+            absoluteFromWorkspaceRoot: true,
+            allowRoot: true
+          });
+          const escaped = targetPath.replace(/"/g, '\\"');
+          if (process.platform === 'win32') {
+            ptyProcess.write(`cd "${escaped}"\r`);
+          } else {
+            ptyProcess.write(`cd "${escaped}"\n`);
+          }
+        } catch (error) {
+          sendSocketError(socket, error instanceof Error ? error.message : 'Invalid cwd.');
         }
       }
     });
 
     socket.on('close', () => {
-      console.log(`[capy-pty] Connection closed`);
       disposable.dispose();
-      try { ptyProcess.kill(); } catch { }
+      try {
+        ptyProcess.kill();
+      } catch {
+        // noop
+      }
     });
-
-  } catch (err) {
-    console.error(`[capy-pty] Failed to spawn PTY:`, err);
+  } catch (error) {
+    console.error('[capy-pty] Failed to spawn PTY:', error);
     socket.close();
   }
 });
@@ -175,19 +318,27 @@ server.on('upgrade', (req, socket, head) => {
   const remote = req.socket.remoteAddress || '';
   const origin = req.headers.origin || '';
 
-  console.log(`[capy-pty] Upgrade request: ${url.pathname} from ${remote} (Origin: ${origin})`);
-
   if (url.pathname !== '/pty') {
     socket.destroy();
     return;
   }
 
-  // Permissive check for dev/local network
+  if (!isAllowedRemote(remote)) {
+    socket.destroy();
+    return;
+  }
+
+  if (!isAllowedOrigin(origin)) {
+    socket.destroy();
+    return;
+  }
+
   wss.handleUpgrade(req, socket, head, (ws) => {
     wss.emit('connection', ws, req);
   });
 });
 
-server.listen(PORT, '0.0.0.0', () => {
-  console.log(`[capy-pty] listening on port ${PORT} (All interfaces)`);
+server.listen(PORT, LISTEN_HOST, () => {
+  console.log(`[capy-pty] listening on ${LISTEN_HOST}:${PORT} (mode=${TERMINAL_MODE})`);
 });
+

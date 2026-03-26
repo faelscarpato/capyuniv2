@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AIProvider } from '../lib/aiProvider';
+import { useOnboardingStore } from '../features/onboarding/store/onboardingStore';
 
 const storedProvider = localStorage.getItem('capy_preferred_provider');
 const initialProvider: AIProvider =
@@ -48,6 +49,10 @@ export const useChatStore = create<ChatState>((set) => ({
   },
 
   setProviderApiKey: (provider, key) => {
+      if (key.trim()) {
+          useOnboardingStore.getState().markAIConfigured();
+      }
+
       if (provider === 'gemini') {
           localStorage.setItem('capy_gemini_key', key);
           set({ geminiApiKey: key, apiKey: key });
