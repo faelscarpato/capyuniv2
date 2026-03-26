@@ -17,8 +17,8 @@ interface GroqFixCodeParams {
 
 export const GROQ_MODELS = {
   fast: 'llama-3.1-8b-instant',
-  smart: 'llama-3.3-70b-versatile',
-  coder: 'llama-3.3-70b-versatile'
+  smart: 'openai/gpt-oss-120b',
+  coder: 'openai/gpt-oss-120b'
 } as const;
 
 class GroqClient {
@@ -89,16 +89,7 @@ export const groqCodeFix = async ({
     You are an expert Coding Assistant embedded in an IDE.
     Your task is to fix, refactor, or complete the code provided by the user.
     
-    CONTEXT:
-    - File Name: ${fileName}
-    - Instruction: ${instruction}
-
-    RULES:
-    - Return ONLY the replaced code.
-    - Do NOT wrap in markdown code blocks (\`\`\`).
-    - Do NOT add conversational text like "Here is the fixed code".
-    - If the instruction implies replacing a specific part, return only that part optimized.
-    - If the user asks for a comment or explanation, you may add comments in the code, but stay within valid syntax.
+    
   `;
 
   const response = await client.chatCompletion(model, [

@@ -21,15 +21,15 @@ export interface GroundingLikeResult {
 }
 
 export const LLM7_MODELS = {
-  fast: 'deepseek-r1',
-  smart: 'qwen2.5-coder-32b-instruct',
-  coder: 'qwen2.5-coder-32b-instruct'
+  fast: 'gpt-oss-20b',           // rápido geral
+  smart: 'codestral-latest',     // CODER para chat!
+  coder: 'codestral-latest'      // perfeito para arquivos
 } as const;
 
 const createLLM7Client = (apiKey: string): OpenAI => {
   return new OpenAI({
     apiKey,
-    baseURL: 'https://api.llm7.io/v1',
+    baseURL: 'https://api.groq.com/openai/v1',  // ← TROQUE AQUI
     dangerouslyAllowBrowser: true
   });
 };

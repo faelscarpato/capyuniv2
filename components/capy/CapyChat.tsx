@@ -46,7 +46,8 @@ const OPENAI_TOOLS: ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'write_file',
-      description: 'Creates or OVERWRITES a file at the given path with specified content. Use this to write code.',
+      description:
+        'Creates or OVERWRITES a file at the given path with specified content. Use this to write code.',
       parameters: {
         type: 'object',
         properties: {
@@ -133,7 +134,7 @@ export const CapyChat: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const providerInfo =
-    PROVIDER_OPTIONS.find((provider) => provider.id === preferredProvider) || PROVIDER_OPTIONS[0];
+    PROVIDER_OPTIONS.find((provider) => provider.id === preferredProvider) || PROVIDER_OPTIONS;
 
   const activeApiKey = getProviderApiKey(preferredProvider, {
     geminiApiKey,
@@ -156,7 +157,8 @@ export const CapyChat: React.FC = () => {
     name: 'write_file',
     parameters: {
       type: Type.OBJECT,
-      description: 'Creates or OVERWRITES a file at the given path with specified content. Use this to write code.',
+      description:
+        'Creates or OVERWRITES a file at the given path with specified content. Use this to write code.',
       properties: {
         path: { type: Type.STRING, description: 'Relative path (e.g., src/App.tsx)' },
         content: { type: Type.STRING, description: 'The FULL content of the file.' }
@@ -241,35 +243,39 @@ export const CapyChat: React.FC = () => {
     const fileStructure = getWorkspaceSummary();
     const fileContext = getRelevantFileContext(userMsg);
 
-    return `
-        You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
+    const prompt = `
+You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
 
-        --- PROTOCOLS ---
+--- PROTOCOLS ---
 
-        1. **LANGUAGE ADAPTATION (CRITICAL)**: 
-           - Detect the language used by the user in the prompt below.
-           - If user writes in PORTUGUESE -> Respond in PORTUGUESE.
-           - If user writes in ENGLISH -> Respond in ENGLISH.
-           - If user writes in SPANISH -> Respond in SPANISH.
-           - **NEVER** fail this check. Match the user's language 100%.
+1. LANGUAGE ADAPTATION (CRITICAL): 
+   - Detect the language used by the user in the prompt below.
+   - If user writes in PORTUGUESE -> Respond in PORTUGUESE.
+   - If user writes in ENGLISH -> Respond in ENGLISH.
+   - If user writes in SPANISH -> Respond in SPANISH.
+   - NEVER fail this check. Match the user's language 100%.
 
-        2. **AUTONOMY & TOOLS**:
-           - You have FULL ACCESS to the file system.
-           - **NEVER** ask the user for file code. I have injected the relevant file contents below.
-           - **NEVER** say "I will update the file". JUST CALL THE TOOL \`write_file\`.
-           - To edit a file, you must rewrite the ENTIRE file content using \`write_file\`.
+2. AUTONOMY & TOOLS:
+   - You have FULL ACCESS to the file system.
+   - NEVER ask the user for file code. I have injected the relevant file contents below.
+   - NEVER say "I will update the file". JUST CALL THE TOOL \`write_file\`.
+   - To edit a file, you must rewrite the ENTIRE file content using \`write_file\`.
 
-        3. **NO CHAT CODE**:
-           - Do NOT output code blocks (like \`\`\`js) in your text response.
-           - Code belongs ONLY inside the tool arguments.
-           - In the chat, just say "Criando arquivo X..." or "Atualizando estilo...".
+3. NO CHAT CODE:
+   - Do NOT output code blocks (like \`\`\`js) in your text response.
+   - Code belongs ONLY inside the tool arguments.
+   - In the chat, just say "Criando arquivo X..." or "Atualizando estilo...".
 
-        4. **FILE SYSTEM STATE**:
-           The current project structure is:
-           ${fileStructure}
+4. FILE SYSTEM STATE:
+   The current project structure is:
+   ${fileStructure}
 
-           ${fileContext ? `RELEVANT FILE CONTENTS (Use these to edit):${fileContext}` : ''}
-        `;
+   ${fileContext ? `RELEVANT FILE CONTENTS (Use these to edit):${fileContext}` : ''}
+`;
+
+    // Limitar tamanho do system prompt para evitar estourar TPM
+    const MAX_SYSTEM_CHARS = 3000;
+    return prompt.length > MAX_SYSTEM_CHARS ? prompt.slice(0, MAX_SYSTEM_CHARS) : prompt;
   };
 
   const extractString = (args: Record<string, unknown>, key: string): string => {
@@ -345,8 +351,8 @@ export const CapyChat: React.FC = () => {
       });
 
       let responseText = '';
-      if (response.candidates?.[0]?.content?.parts) {
-        responseText = response.candidates[0].content.parts
+       if (response.candidates?.[0]?.content?.parts) {  // ✅ CORRETO
+        responseText = response.candidates.content.parts
           .filter((part) => 'text' in part && part.text)
           .map((part) => part.text || '')
           .join('\n');
@@ -418,26 +424,33 @@ export const CapyChat: React.FC = () => {
     dynamicSystemPrompt: string
   ): Promise<void> => {
     const baseURL = provider === 'groq' ? 'https://api.groq.com/openai/v1' : 'https://api.llm7.io/v1';
-    const model = provider === 'groq' ? GROQ_MODELS.smart : LLM7_MODELS.smart;
+    // Para Groq, use um modelo mais leve (fast) para reduzir tokens
+    const model = provider === 'groq' ? GROQ_MODELS.fast : LLM7_MODELS.smart;
+
     const client = new OpenAI({
       apiKey: providerKey,
       baseURL,
       dangerouslyAllowBrowser: true
     });
 
-    const history: ChatCompletionMessageParam[] = messages.slice(-10).map((message) => ({
+    const MAX_HISTORY_MESSAGES = 3;
+    const MAX_MESSAGE_CHARS = 1000;
+
+    const history: ChatCompletionMessageParam[] = messages.slice(-MAX_HISTORY_MESSAGES).map((message) => ({
       role: message.role === 'user' ? 'user' : 'assistant',
-      content: message.content
+      content: message.content.slice(0, MAX_MESSAGE_CHARS)
     }));
+
+    const trimmedUserMsg = userMsg.slice(0, MAX_MESSAGE_CHARS);
 
     const loopMessages: ChatCompletionMessageParam[] = [
       { role: 'system', content: dynamicSystemPrompt },
       ...history,
-      { role: 'user', content: userMsg }
+      { role: 'user', content: trimmedUserMsg }
     ];
 
     let turnCount = 0;
-    const MAX_TURNS = 15;
+    const MAX_TURNS = 8;
 
     while (turnCount < MAX_TURNS) {
       turnCount++;
@@ -676,7 +689,9 @@ export const CapyChat: React.FC = () => {
             >
               <div
                 className="prose prose-invert prose-xs max-w-none break-words"
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(marked.parse(message.content) as string) }}
+                dangerouslySetInnerHTML={{
+                  __html: DOMPurify.sanitize(marked.parse(message.content) as string)
+                }}
               />
             </div>
           </div>
