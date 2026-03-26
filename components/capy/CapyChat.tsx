@@ -134,7 +134,7 @@ export const CapyChat: React.FC = () => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const providerInfo =
-    PROVIDER_OPTIONS.find((provider) => provider.id === preferredProvider) || PROVIDER_OPTIONS;
+    PROVIDER_OPTIONS.find((provider) => provider.id === preferredProvider) || PROVIDER_OPTIONS[0];
 
   const activeApiKey = getProviderApiKey(preferredProvider, {
     geminiApiKey,
@@ -350,13 +350,11 @@ You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
         }
       });
 
-      let responseText = '';
-       if (response.candidates?.[0]?.content?.parts) {  // ✅ CORRETO
-        responseText = response.candidates.content.parts
-          .filter((part) => 'text' in part && part.text)
-          .map((part) => part.text || '')
-          .join('\n');
-      }
+      const responseParts = response.candidates?.[0]?.content?.parts || [];
+      const responseText = responseParts
+        .filter((part): part is { text: string } => 'text' in part && typeof part.text === 'string')
+        .map((part) => part.text)
+        .join('\n');
 
       const hasToolCalls = response.functionCalls && response.functionCalls.length > 0;
       const hasCodeBlock = responseText.includes('```');
@@ -469,11 +467,7 @@ You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
       const responseText =
         typeof assistantMessage.content === 'string'
           ? assistantMessage.content
-          : Array.isArray(assistantMessage.content)
-            ? assistantMessage.content
-                .map((part) => (part.type === 'text' ? part.text : ''))
-                .join('\n')
-            : '';
+          : '';
 
       if (responseText.trim()) {
         addMessage({ role: 'model', content: responseText });
@@ -487,6 +481,10 @@ You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
       }
 
       for (const toolCall of toolCalls) {
+        if (toolCall.type !== 'function') {
+          continue;
+        }
+
         addNotification('info', `Agent (${providerInfo.label}): ${toolCall.function.name}...`);
 
         let parsedArgs: unknown = {};

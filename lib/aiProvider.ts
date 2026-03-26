@@ -1,14 +1,8 @@
-import { analyzeCodeHover, generateCodeFix as geminiCodeFix, generateText as geminiGenerateText } from './geminiClient';
-import { groqAnalyzeHover, groqCodeFix, groqGenerateText } from './groqClient';
-import { llm7AnalyzeHover, llm7CodeFix, llm7GenerateText } from './llm7Client';
+import { aiOrchestrator, type ProviderApiKeys } from '../features/ai/services/AIOrchestrator';
 
 export type AIProvider = 'gemini' | 'groq' | 'llm7';
 
-export type AIApiKeys = {
-  geminiApiKey: string;
-  groqApiKey: string;
-  llm7ApiKey: string;
-};
+export type AIApiKeys = ProviderApiKeys;
 
 interface GenerateTextParams {
   model?: string;
@@ -16,11 +10,17 @@ interface GenerateTextParams {
   systemInstruction?: string;
 }
 
-interface GenerateCodeFixParams {
+export interface GenerateCodeFixParams {
   model?: string;
   code: string;
   instruction: string;
   fileName: string;
+}
+
+interface GenerateCodeFixRequest {
+  provider: AIProvider;
+  apiKeys: AIApiKeys;
+  params: GenerateCodeFixParams;
 }
 
 export const generateText = async (
@@ -28,33 +28,17 @@ export const generateText = async (
   apiKeys: AIApiKeys,
   params: GenerateTextParams
 ): Promise<string> => {
-  switch (provider) {
-    case 'gemini':
-      return geminiGenerateText({ apiKey: apiKeys.geminiApiKey, ...params });
-    case 'groq':
-      return groqGenerateText({ apiKey: apiKeys.groqApiKey, ...params });
-    case 'llm7':
-      return llm7GenerateText({ apiKey: apiKeys.llm7ApiKey, ...params });
-    default:
-      throw new Error(`Unsupported AI provider: ${provider}`);
-  }
+  return aiOrchestrator.generateText(provider, apiKeys, params);
 };
 
-export const generateCodeFix = async (
-  provider: AIProvider,
-  apiKeys: AIApiKeys,
-  params: GenerateCodeFixParams
-): Promise<string> => {
-  switch (provider) {
-    case 'gemini':
-      return geminiCodeFix({ apiKey: apiKeys.geminiApiKey, ...params });
-    case 'groq':
-      return groqCodeFix({ apiKey: apiKeys.groqApiKey, ...params });
-    case 'llm7':
-      return llm7CodeFix({ apiKey: apiKeys.llm7ApiKey, ...params });
-    default:
-      throw new Error(`Unsupported AI provider: ${provider}`);
+export const generateCodeFix = async (...args: [GenerateCodeFixRequest] | [AIProvider, AIApiKeys, GenerateCodeFixParams]): Promise<string> => {
+  if (args.length === 1) {
+    const request = args[0];
+    return aiOrchestrator.generateCodeFix(request.provider, request.apiKeys, request.params);
   }
+
+  const [provider, apiKeys, params] = args;
+  return aiOrchestrator.generateCodeFix(provider, apiKeys, params);
 };
 
 export const analyzeHover = async (
@@ -63,14 +47,5 @@ export const analyzeHover = async (
   snippet: string,
   lang: string
 ): Promise<string> => {
-  switch (provider) {
-    case 'gemini':
-      return analyzeCodeHover(apiKeys.geminiApiKey, snippet, lang);
-    case 'groq':
-      return groqAnalyzeHover(apiKeys.groqApiKey, snippet, lang);
-    case 'llm7':
-      return llm7AnalyzeHover(apiKeys.llm7ApiKey, snippet, lang);
-    default:
-      throw new Error(`Unsupported AI provider: ${provider}`);
-  }
+  return aiOrchestrator.analyzeHover(provider, apiKeys, snippet, lang);
 };

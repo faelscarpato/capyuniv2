@@ -38,7 +38,14 @@ const translations = {
         language: 'Idioma / Language',
         themes: 'Temas',
         configApiKey: 'Configurar API Gemini',
-        cloneGit: 'Clonar Repositório Git'
+        cloneGit: 'Clonar Repositório Git',
+        nanoBanana: 'Nano Banana',
+        promptPlaceholder: 'Descreva a imagem que deseja gerar',
+        model: 'Modelo',
+        aspectRatio: 'Proporção',
+        generating: 'Gerando...',
+        generateImage: 'Gerar Imagem',
+        download: 'Baixar'
     },
     en: {
         file: 'File',
@@ -77,7 +84,14 @@ const translations = {
         language: 'Language',
         themes: 'Themes',
         configApiKey: 'Configure Gemini API',
-        cloneGit: 'Clone Git Repository'
+        cloneGit: 'Clone Git Repository',
+        nanoBanana: 'Nano Banana',
+        promptPlaceholder: 'Describe the image you want to generate',
+        model: 'Model',
+        aspectRatio: 'Aspect Ratio',
+        generating: 'Generating...',
+        generateImage: 'Generate Image',
+        download: 'Download'
     }
 };
 

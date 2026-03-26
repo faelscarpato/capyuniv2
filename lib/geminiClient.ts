@@ -98,3 +98,14 @@ export const analyzeCodeHover = async (apiKey: string, codeSnippet: string, lang
         return "Erro na análise IA.";
     }
 };
+
+interface GenerateNanoImageParams {
+  apiKey: string;
+  prompt: string;
+  model?: 'gemini-2.5-flash-image' | 'gemini-3-pro-image-preview';
+  aspectRatio?: '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
+}
+
+export const generateNanoImage = async (_params: GenerateNanoImageParams): Promise<string> => {
+  throw new Error('Image generation is not available in this build yet.');
+};

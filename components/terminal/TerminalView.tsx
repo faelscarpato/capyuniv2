@@ -4,6 +4,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { executeCommand, getTerminalCwdPath } from '../../lib/terminalEngine';
 import { onTerminalSetCwd, onTerminalSendCommand } from '../../lib/terminalBridge';
 import { useUIStore } from '../../stores/uiStore';
+import { useOnboardingStore } from '../../features/onboarding/store/onboardingStore';
 
 type TerminalMode = 'real' | 'simulated';
 
@@ -20,8 +21,10 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
   const commandRef = useRef('');
   const wsRef = useRef<WebSocket | null>(null);
   const modeRef = useRef<TerminalMode>('simulated');
+  const hasTrackedUsageRef = useRef(false);
 
   const { currentTheme, isPanelOpen } = useUIStore();
+  const { markTerminalUsed } = useOnboardingStore();
 
   const getXtermTheme = (themeId: string) => {
     if (themeId === 'midnight-pro') {
@@ -261,6 +264,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
         });
 
         dataDisposable = term.onData((data) => {
+          if (!hasTrackedUsageRef.current) {
+            markTerminalUsed();
+            hasTrackedUsageRef.current = true;
+          }
+
           if (modeRef.current === 'real') {
             if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
               wsRef.current.send(JSON.stringify({ type: 'input', data }));

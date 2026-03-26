@@ -7,6 +7,7 @@ class TerminalSyncManager {
     private isConnected = false;
     public onScanSuccess: ((structure: any) => void) | null = null;
     public onFileContent: ((path: string, content: string) => void) | null = null;
+    public onError: ((message: string) => void) | null = null;
 
     constructor() {
         this.connect();
@@ -28,6 +29,9 @@ class TerminalSyncManager {
                     }
                     if (msg.type === 'fileContent' && this.onFileContent) {
                         this.onFileContent(msg.path, msg.content);
+                    }
+                    if (msg.type === 'error' && this.onError) {
+                        this.onError(msg.message || 'Terminal sync error');
                     }
                 } catch { /* noop */ }
             };
@@ -79,6 +83,15 @@ class TerminalSyncManager {
 
     public requestScan() {
         const msg = { type: 'scan' };
+        if (this.isConnected) {
+            this.socket?.send(JSON.stringify(msg));
+        } else {
+            this.queue.push(msg);
+        }
+    }
+
+    public setCwd(cwd: string) {
+        const msg = { type: 'setCwd', cwd };
         if (this.isConnected) {
             this.socket?.send(JSON.stringify(msg));
         } else {

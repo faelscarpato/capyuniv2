@@ -6,7 +6,7 @@ import { themes } from '../../lib/themes';
 import { ContextMenu, ContextMenuItem } from '../ui/ContextMenu';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { useChatStore } from '../../stores/chatStore';
-import { generateCodeFix, analyzeCodeHover } from '../../lib/geminiClient';
+import { analyzeHover, generateCodeFix } from '../../lib/aiProvider';
 import { listAvailableRefactors, listAvailableSnippets, listAvailableTemplates } from '../../lib/extensions';
 
 const useDebounceCallback = (callback: any, delay: number) => {
@@ -23,7 +23,7 @@ export const MonacoWrapper: React.FC = () => {
     const { activeTabId, files, updateFileContent, markSaved, pendingScroll, clearPendingScroll } = useWorkspaceStore();
     const { currentTheme, setMarkers, setCommandPalette, setRightSidebarOpen, setActivePanelTab, setPanelOpen, setPreviewFileId } = useUIStore();
     const { addNotification } = useNotificationStore();
-    const { apiKey } = useChatStore();
+    const { preferredProvider, geminiApiKey, groqApiKey, llm7ApiKey } = useChatStore();
 
     const editorRef = useRef<any>(null);
     const monacoRef = useRef<any>(null);
@@ -143,9 +143,19 @@ export const MonacoWrapper: React.FC = () => {
         languages.forEach(lang => {
             monaco.languages.registerHoverProvider(lang, {
                 provideHover: async (model, position) => {
-                    // Only trigger if we have an API key
-                    const currentApiKey = useChatStore.getState().apiKey;
-                    if (!currentApiKey) return null;
+                    const chatState = useChatStore.getState();
+                    const provider = chatState.preferredProvider;
+                    const apiKeys = {
+                        geminiApiKey: chatState.geminiApiKey,
+                        groqApiKey: chatState.groqApiKey,
+                        llm7ApiKey: chatState.llm7ApiKey
+                    };
+                    const hasActiveKey = provider === 'gemini'
+                        ? apiKeys.geminiApiKey
+                        : provider === 'groq'
+                            ? apiKeys.groqApiKey
+                            : apiKeys.llm7ApiKey;
+                    if (!hasActiveKey) return null;
 
                     // Simple heuristic: Only analyze if hovering over a substantial word/line
                     const word = model.getWordAtPosition(position);
@@ -181,7 +191,7 @@ export const MonacoWrapper: React.FC = () => {
                     // Monaco handles the "mouse hover duration" (stop) internally before calling this.
 
                     // Let's analyze!
-                    const analysis = await analyzeCodeHover(currentApiKey, codeContext, lang);
+                    const analysis = await analyzeHover(provider, apiKeys, codeContext, lang);
                     hoverCache.set(cacheKey, analysis);
 
                     return {
@@ -244,7 +254,13 @@ export const MonacoWrapper: React.FC = () => {
     // --- AI Code Fixing Logic ---
     const handleAIFix = async () => {
         if (!editorRef.current || !file) return;
-        if (!apiKey) {
+        const activeKey = preferredProvider === 'gemini'
+            ? geminiApiKey
+            : preferredProvider === 'groq'
+                ? groqApiKey
+                : llm7ApiKey;
+
+        if (!activeKey) {
             addNotification('error', "API Key missing. Go to AI Chat to set it.");
             return;
         }
@@ -271,10 +287,17 @@ export const MonacoWrapper: React.FC = () => {
                 : "Generate code here based on the file context or fix global errors. Return the Full file content.";
 
             const fixedCode = await generateCodeFix({
-                apiKey,
-                code: codeToFix,
-                instruction,
-                fileName: file.name
+                provider: preferredProvider,
+                apiKeys: {
+                    geminiApiKey,
+                    groqApiKey,
+                    llm7ApiKey
+                },
+                params: {
+                    code: codeToFix,
+                    instruction,
+                    fileName: file.name
+                }
             });
 
             // Apply Edits
