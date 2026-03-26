@@ -1,20 +1,20 @@
 import React, { useMemo, useState } from 'react';
 import { useChatStore } from '../../stores/chatStore';
-import { generateGroundingContent } from '../../lib/geminiClient';
+import { websearch } from '../../lib/websearch';
 import { Icon } from '../ui/Icon';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
 export const GroundingView: React.FC = () => {
-  const { apiKey } = useChatStore();
+  const { llm7ApiKey } = useChatStore();
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ text: string; chunks: Array<{ title: string; url: string; snippet: string }> } | null>(null);
   const [error, setError] = useState('');
 
   const handleSearch = async () => {
-      if (!apiKey) {
-          setError("Por favor, configure sua API Key na aba de Chat (IA) primeiro.");
+      if (!llm7ApiKey) {
+          setError("Por favor, configure sua API Key do LLM7 para usar Web Search.");
           return;
       }
       if (!query.trim()) return;
@@ -24,8 +24,8 @@ export const GroundingView: React.FC = () => {
       setResult(null);
 
       try {
-          const data = await generateGroundingContent({
-              apiKey,
+          const data = await websearch({
+              llm7ApiKey,
               prompt: query
           });
           setResult(data);

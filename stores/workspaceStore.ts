@@ -6,6 +6,7 @@ import { saveWorkspace, loadWorkspace } from '../lib/storage';
 import { getLanguageFromFilename } from '../lib/fileUtils';
 import { useNotificationStore } from './notificationStore';
 import { terminalSync } from '../lib/terminalSync';
+import { triggerEditorHook } from '../lib/extensions';
 
 interface PendingScroll {
   fileId: string;
@@ -300,16 +301,21 @@ export const useWorkspaceStore = create<WorkspaceState & WorkspaceActions>((set,
   openFile: (id) => {
     const { files, getPathForId } = get();
     const node = files[id];
+    const filePath = getPathForId(id);
 
     if (node && node.type === 'file' && node.content === undefined) {
-      const path = getPathForId(id);
-      if (path) terminalSync.readFile(path);
+      if (filePath) terminalSync.readFile(filePath);
     }
 
     set(state => ({
       openTabs: state.openTabs.includes(id) ? state.openTabs : [...state.openTabs, id],
       activeTabId: id
     }));
+
+    if (filePath) {
+      triggerEditorHook('onFileOpen', filePath);
+    }
+
     saveWorkspace(get());
   },
 

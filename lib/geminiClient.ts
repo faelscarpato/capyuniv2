@@ -7,22 +7,11 @@ interface GenerateTextParams {
   systemInstruction?: string;
 }
 
-interface GroundingParams {
-  apiKey: string;
-  prompt: string;
-}
-
 interface FixCodeParams {
     apiKey: string;
     code: string;
     instruction: string;
     fileName: string;
-}
-
-export interface GroundingChunk {
-    title: string;
-    url: string;
-    snippet: string;
 }
 
 // 1. Basic Text Generation (Updated to 2.5 Flash)
@@ -38,46 +27,7 @@ export const generateText = async ({ apiKey, model = 'gemini-2.0-flash', prompt,
   return response.text || '';
 };
 
-// 2. Grounding (Web Search only)
-export const generateGroundingContent = async ({ apiKey, prompt }: GroundingParams): Promise<{ text: string; chunks: GroundingChunk[] }> => {
-    const ai = new GoogleGenAI({ apiKey });
-    const modelName = 'gemini-2.0-flash';
-    const systemInstruction = "Você é um assistente útil. Responda em Português do Brasil e sempre cite as principais fontes usadas.";
-
-    try {
-        const response = await ai.models.generateContent({
-            model: modelName,
-            contents: prompt,
-            config: {
-                tools: [{ googleSearch: {} }],
-                systemInstruction
-            }
-        });
-
-        const rawChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-        const supports = response.candidates?.[0]?.groundingMetadata?.groundingSupports || [];
-        const text = response.text || "Nenhum resultado encontrado.";
-        const chunks: GroundingChunk[] = rawChunks
-            .map((chunk: any, idx: number) => {
-                const web = chunk?.web || {};
-                const support = supports[idx];
-                const snippet = support?.segment?.text || support?.groundingChunkIndices?.join(', ') || '';
-                return {
-                    title: web.title || 'Fonte',
-                    url: web.uri || '',
-                    snippet
-                };
-            })
-            .filter((chunk: GroundingChunk) => chunk.url);
-
-        return { text, chunks };
-    } catch (error: any) {
-        console.error("Grounding Error", error);
-        throw new Error(error.message || "Falha ao buscar dados.");
-    }
-};
-
-// 3. Inline Code Fix / Suggestion
+// 2. Inline Code Fix / Suggestion
 export const generateCodeFix = async ({ apiKey, code, instruction, fileName }: FixCodeParams): Promise<string> => {
     const ai = new GoogleGenAI({ apiKey });
     
@@ -124,7 +74,7 @@ export const generateCodeFix = async ({ apiKey, code, instruction, fileName }: F
     }
 };
 
-// 4. Lightweight Hover Analysis
+// 3. Lightweight Hover Analysis
 export const analyzeCodeHover = async (apiKey: string, codeSnippet: string, language: string): Promise<string> => {
     if (!apiKey) return "Configure sua API Key para ver a análise.";
     

@@ -1,4 +1,5 @@
 import { FileSystem } from './types';
+import type { AIProvider } from './lib/aiProvider';
 
 export const INITIAL_FILES: FileSystem = {
   'root': {
@@ -47,4 +48,11 @@ export const INITIAL_FILES: FileSystem = {
     language: 'javascript',
     createdAt: Date.now(),
   }
+};
+
+export const DEFAULT_AI_CONFIG = {
+  geminiApiKey: '',
+  groqApiKey: '',
+  llm7ApiKey: '',
+  preferredProvider: 'gemini' as AIProvider
 };

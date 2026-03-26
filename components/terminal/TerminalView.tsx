@@ -189,6 +189,23 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
     let unsubscribeSetCwd: any = null;
     let unsubscribeCommand: any = null;
 
+    const runSimulatedCommand = (rawCommand: string) => {
+      const command = rawCommand.trim();
+
+      if (command === 'clear') {
+        term?.clear();
+        if (term) prompt(term);
+        return;
+      }
+
+      if (command.length > 0) {
+        const output = executeCommand(command);
+        if (output) term?.writeln(output);
+      }
+
+      if (term) prompt(term);
+    };
+
     const initTerminal = () => {
       if (!terminalRef.current || isDisposed) return;
 
@@ -235,13 +252,11 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
         unsubscribeCommand = onTerminalSendCommand((cmd) => {
           if (modeRef.current === 'real' && wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.send(JSON.stringify({ type: 'input', data: cmd }));
-          } else if (modeRef.current === 'simulated') {
-            // Echo to terminal and execute
-            term?.write(cmd);
-            if (cmd === '\r') {
-              // Execute is already handled by term.onData if we write \r? 
-              // Actually term.write just displays. We need to manually trigger logic for simulated.
-            }
+          } else if (modeRef.current === 'simulated' && term) {
+            const sanitized = cmd.replace(/\r$/, '');
+            term.write(sanitized);
+            term.write('\r\n');
+            runSimulatedCommand(sanitized);
           }
         });
 
@@ -263,20 +278,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
           if (data === '\r') {
             const cmd = commandRef.current;
             commandRef.current = '';
-
-            if (cmd.trim() === 'clear') {
-              term?.clear();
-              prompt(term!);
-              return;
-            }
-
             term?.write('\r\n');
-            if (cmd.trim().length > 0) {
-              const output = executeCommand(cmd);
-              if (output) term?.writeln(output);
-            }
-
-            prompt(term!);
+            runSimulatedCommand(cmd);
             return;
           }
 

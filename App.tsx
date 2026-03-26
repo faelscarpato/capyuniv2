@@ -5,11 +5,6 @@ import { useWorkspaceStore } from './stores/workspaceStore';
 import { useUIStore } from './stores/uiStore';
 import registerServiceWorker from './registerServiceWorker';
 
-// Após renderizar o React:
-
-
-
-
 const App: React.FC = () => {
   const { initialize } = useWorkspaceStore();
   const { currentTheme } = useUIStore();

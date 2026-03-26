@@ -7,6 +7,7 @@ import { ContextMenu, ContextMenuItem } from '../ui/ContextMenu';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { useChatStore } from '../../stores/chatStore';
 import { generateCodeFix, analyzeCodeHover } from '../../lib/geminiClient';
+import { listAvailableRefactors, listAvailableSnippets, listAvailableTemplates } from '../../lib/extensions';
 
 const useDebounceCallback = (callback: any, delay: number) => {
     const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -299,6 +300,44 @@ export const MonacoWrapper: React.FC = () => {
         }
     };
 
+    const getCurrentFileType = (): string => {
+        if (!file) return '';
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        return ext || (file.language || '').toLowerCase();
+    };
+
+    const insertExtensionContent = (content: string, kind: 'snippet' | 'template', id: string) => {
+        if (!editorRef.current) return;
+        const selection = editorRef.current.getSelection();
+        if (!selection) return;
+
+        editorRef.current.executeEdits('capy-extension', [{
+            range: selection,
+            text: content,
+            forceMoveMarkers: true
+        }]);
+        addNotification('success', `${kind === 'snippet' ? 'Snippet' : 'Template'} "${id}" inserido.`);
+    };
+
+    const applyExtensionRefactor = (refactorId: string, transform: (code: string) => string) => {
+        if (!editorRef.current) return;
+        const model = editorRef.current.getModel();
+        const selection = editorRef.current.getSelection();
+        if (!model || !selection) return;
+
+        const isSelection = !selection.isEmpty();
+        const currentCode = isSelection ? model.getValueInRange(selection) : model.getValue();
+        const updatedCode = transform(currentCode);
+
+        const targetRange = isSelection ? selection : model.getFullModelRange();
+        editorRef.current.executeEdits('capy-extension-refactor', [{
+            range: targetRange,
+            text: updatedCode,
+            forceMoveMarkers: true
+        }]);
+        addNotification('success', `Refactor "${refactorId}" aplicado.`);
+    };
+
     const getMenuItems = (): ContextMenuItem[] => {
         const items: ContextMenuItem[] = [
             { label: 'Ir para Definição', onClick: () => triggerAction('editor.action.revealDefinition'), shortcut: 'F12' },
@@ -312,6 +351,41 @@ export const MonacoWrapper: React.FC = () => {
             onClick: handleAIFix,
             shortcut: 'Ctrl+Shift+.',
         });
+
+        const fileType = getCurrentFileType();
+        const snippetEntries = listAvailableSnippets(fileType);
+        const templateEntries = listAvailableTemplates(fileType);
+        const refactorEntries = listAvailableRefactors(fileType);
+
+        if (snippetEntries.length > 0) {
+            items.push({ label: '', onClick: () => { }, separator: true });
+            snippetEntries.slice(0, 4).forEach((entry) => {
+                items.push({
+                    label: `Snippet: ${entry.snippetId}`,
+                    onClick: () => insertExtensionContent(entry.content, 'snippet', entry.snippetId),
+                });
+            });
+        }
+
+        if (templateEntries.length > 0) {
+            items.push({ label: '', onClick: () => { }, separator: true });
+            templateEntries.slice(0, 3).forEach((entry) => {
+                items.push({
+                    label: `Template: ${entry.snippetId}`,
+                    onClick: () => insertExtensionContent(entry.content, 'template', entry.snippetId),
+                });
+            });
+        }
+
+        if (refactorEntries.length > 0) {
+            items.push({ label: '', onClick: () => { }, separator: true });
+            refactorEntries.slice(0, 4).forEach((entry) => {
+                items.push({
+                    label: `Refactor: ${entry.refactorId}`,
+                    onClick: () => applyExtensionRefactor(entry.refactorId, entry.apply),
+                });
+            });
+        }
 
         items.push({ label: '', onClick: () => { }, separator: true });
 
