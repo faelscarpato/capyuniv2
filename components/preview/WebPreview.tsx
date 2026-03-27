@@ -90,7 +90,6 @@ window.addEventListener('unhandledrejection', function(event) {
 });
 </script>
 <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-<script src="https://cdn.tailwindcss.com"></script>
 <script>
 (async function () {
   const postLog = function(type, args) {
@@ -106,8 +105,6 @@ window.addEventListener('unhandledrejection', function(event) {
     console[method] = function() {
       const args = Array.from(arguments);
       original.apply(console, args);
-      const first = args[0];
-      if (typeof first === 'string' && first.includes('cdn.tailwindcss.com')) return;
       postLog(method, args);
     };
   });
@@ -199,9 +196,10 @@ window.addEventListener('unhandledrejection', function(event) {
       const cssText = JSON.stringify(files[cssPath] || '');
       const moduleCode = [
         'const styleId = ' + JSON.stringify(styleId) + ';',
-        'if (!document.querySelector(\'style[data-capy-style="\' + styleId + '\'"])) {',
-        '  const style = document.createElement(\'style\');',
-        '  style.setAttribute(\'data-capy-style\', styleId);',
+        'const selector = "style[data-capy-style=\\"" + styleId + "\\"]";',
+        'if (!document.querySelector(selector)) {',
+        '  const style = document.createElement("style");',
+        '  style.setAttribute("data-capy-style", styleId);',
         '  style.textContent = ' + cssText + ';',
         '  document.head.appendChild(style);',
         '}',
@@ -246,12 +244,13 @@ window.addEventListener('unhandledrejection', function(event) {
     localScripts.forEach(function(script) {
       const src = script.getAttribute('src') || '';
       const normalized = src.startsWith('.') ? src : './' + src.replace(/^\\//, '');
-      const mapped = importMap.imports[normalized] || importMap.imports[normalized.replace(/\\.[^/.]+$/, '')];
+      const resolved = resolveSpecifier('./index.html', normalized);
+      const mapped = importMap.imports[resolved] || importMap.imports[resolved.replace(/\\.[^/.]+$/, '')];
       if (!mapped) return;
 
       const moduleScript = document.createElement('script');
       moduleScript.type = 'module';
-      moduleScript.textContent = 'import ' + JSON.stringify(normalized) + ';';
+      moduleScript.textContent = 'import ' + JSON.stringify(resolved) + ';';
       script.replaceWith(moduleScript);
     });
   } catch (error) {
@@ -404,7 +403,6 @@ window.addEventListener('unhandledrejection', function(event) {
               title="local-runtime-preview"
               src={activeUrl}
               className="w-full h-full border-none"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
             />
           ) : (
             <div className="h-full w-full flex items-center justify-center text-sm text-gray-600 bg-gray-50 px-6 text-center">
@@ -443,7 +441,7 @@ window.addEventListener('unhandledrejection', function(event) {
           title="preview"
           srcDoc={srcDoc}
           className="w-full h-full border-none"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+          sandbox="allow-scripts allow-forms allow-modals allow-popups"
         />
       </div>
     </div>

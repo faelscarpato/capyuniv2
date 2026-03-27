@@ -12,7 +12,17 @@ import { useLocalRuntimeStore } from '../../features/local-runtime/store/localRu
 import { localRuntimeAdapter } from '../../features/local-runtime/adapters/LocalRuntimeAdapter';
 
 type TerminalMode = 'real' | 'simulated';
-const PTY_WS_URL = (import.meta as any).env?.VITE_PTY_WS_URL || `ws://${window.location.hostname || '127.0.0.1'}:8787/pty`;
+const resolvePtyWsUrl = () => {
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const fallbackUrl = `${protocol}://${window.location.hostname || '127.0.0.1'}:8787/pty`;
+  const configuredUrl = (import.meta as any).env?.VITE_PTY_WS_URL as string | undefined;
+  if (!configuredUrl) return fallbackUrl;
+  if (window.location.protocol === 'https:' && configuredUrl.startsWith('ws://')) {
+    return `wss://${configuredUrl.slice('ws://'.length)}`;
+  }
+  return configuredUrl;
+};
+const PTY_WS_URL = resolvePtyWsUrl();
 const SIMULATED_COMMANDS = new Set(['help', 'ls', 'cd', 'pwd', 'cat', 'touch', 'mkdir', 'rm', 'echo', 'clear']);
 const LOCAL_RUNTIME_COMMANDS = new Set([
   'node',
