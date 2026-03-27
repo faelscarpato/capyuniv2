@@ -10,7 +10,7 @@ import { useTerminalStore } from '../../core/terminal/store/terminalStore';
 
 type TerminalMode = 'real' | 'simulated';
 
-const PTY_WS_URL = (import.meta as any).env?.VITE_PTY_WS_URL || `ws://${window.location.hostname}:8787/pty`;
+const ws = new WebSocket('wss://capyuniv2.pages.dev:8787/pty');
 
 interface TerminalViewProps {
   terminalId: string;
