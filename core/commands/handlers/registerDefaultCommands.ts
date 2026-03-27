@@ -9,6 +9,9 @@ import { useTerminalStore } from '../../terminal/store/terminalStore';
 import { setTerminalCwd } from '../../../lib/terminalEngine';
 import { emitTerminalSetCwd } from '../../../lib/terminalBridge';
 import { workspacePathService } from '../../workspace/services/workspacePathService';
+import { useRuntimeModeStore } from '../../../features/local-runtime/store/runtimeModeStore';
+import { useLocalRuntimeStore } from '../../../features/local-runtime/store/localRuntimeStore';
+import { useSourceControlStore } from '../../../features/source-control/store/sourceControlStore';
 
 let registered = false;
 
@@ -22,6 +25,7 @@ const ensureTerminalReady = (targetId: string): void => {
   const workspace = useWorkspaceStore.getState();
   const ui = useUIStore.getState();
   const terminal = useTerminalStore.getState();
+  const localRuntime = useLocalRuntimeStore.getState();
   const absolutePath = workspacePathService.getAbsolutePathForId(workspace.files, targetId);
   const sessionId = terminal.ensureSession();
   setTerminalCwd(targetId, sessionId);
@@ -29,6 +33,9 @@ const ensureTerminalReady = (targetId: string): void => {
 
   terminal.setActiveSession(sessionId);
   terminal.setSessionCwd(sessionId, absolutePath);
+  localRuntime.ensureSession(sessionId, absolutePath);
+  localRuntime.setActiveSession(sessionId);
+  localRuntime.setSessionCwd(sessionId, absolutePath);
 
   ui.setPanelOpen(true);
   ui.setActivePanelTab('TERMINAL');
@@ -277,6 +284,31 @@ export const registerDefaultCommands = (): void => {
       return;
     }
     ui.setPanelOpen(false);
+  });
+
+  commandRegistry.register('runtime.activateLocal', () => {
+    const language = useUIStore.getState().language;
+    useRuntimeModeStore.getState().requestActivation({
+      requestedBy: 'Command',
+      actionLabel: language === 'pt' ? 'Ativar Modo Runtime Local' : 'Activate Local Runtime Mode'
+    });
+  });
+
+  commandRegistry.register('runtime.disconnect', () => {
+    useRuntimeModeStore.getState().requestDisconnect();
+  });
+
+  commandRegistry.register('runtime.stopCurrentProcess', () => {
+    const activeSession = useTerminalStore.getState().activeSessionId;
+    useLocalRuntimeStore.getState().stopCurrentProcess(activeSession);
+  });
+
+  commandRegistry.register('runtime.stopAllProcesses', () => {
+    useLocalRuntimeStore.getState().stopAllProcesses();
+  });
+
+  commandRegistry.register('sourceControl.refresh', () => {
+    void useSourceControlStore.getState().refreshStatus();
   });
 
   commandRegistry.register('templates.scaffoldDocs', () => {
