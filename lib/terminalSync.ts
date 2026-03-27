@@ -1,6 +1,16 @@
 import type { RuntimeMode, TerminalClientMessage } from '../shared/contracts/terminal';
 
-const PTY_WS_URL = (import.meta as any).env?.VITE_PTY_WS_URL || `ws://${window.location.hostname || '127.0.0.1'}:8787/pty`;
+const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss' : 'ws';
+const resolvePtyWsUrl = () => {
+  const fallbackUrl = `${WS_PROTOCOL}://${window.location.hostname || '127.0.0.1'}:8787/pty`;
+  const configuredUrl = (import.meta as any).env?.VITE_PTY_WS_URL as string | undefined;
+  if (!configuredUrl) return fallbackUrl;
+  if (window.location.protocol === 'https:' && configuredUrl.startsWith('ws://')) {
+    return `wss://${configuredUrl.slice('ws://'.length)}`;
+  }
+  return configuredUrl;
+};
+const PTY_WS_URL = resolvePtyWsUrl();
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
