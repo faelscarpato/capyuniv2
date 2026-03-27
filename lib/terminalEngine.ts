@@ -1,21 +1,35 @@
 import { useWorkspaceStore } from '../stores/workspaceStore';
 import { FileNode } from '../types';
 
-// Simple virtual CWD tracker since we are single session
-let cwdId = 'root'; 
+// Virtual CWD per terminal session to keep simulated terminals isolated.
+const cwdBySessionId: Record<string, string> = {};
+
+const getSessionKey = (sessionId?: string): string => sessionId || 'default';
+
+const getCurrentCwdId = (sessionId?: string): string => {
+  const key = getSessionKey(sessionId);
+  if (!cwdBySessionId[key]) {
+    cwdBySessionId[key] = 'root';
+  }
+  return cwdBySessionId[key];
+};
+
+const setCurrentCwdId = (nextId: string, sessionId?: string): void => {
+  cwdBySessionId[getSessionKey(sessionId)] = nextId;
+};
 
 // Allow external components to change CWD (e.g., from Explorer context menu)
-export const setTerminalCwd = (id: string) => {
+export const setTerminalCwd = (id: string, sessionId?: string) => {
     // Validate that it's a folder or root, otherwise use root
     const store = useWorkspaceStore.getState();
     const node = store.files[id];
     if (node && node.type === 'folder') {
-        cwdId = id;
+        setCurrentCwdId(id, sessionId);
     } else if (node && node.parentId) {
         // If file, set to parent folder
-        cwdId = node.parentId;
+        setCurrentCwdId(node.parentId, sessionId);
     } else {
-        cwdId = 'root';
+        setCurrentCwdId('root', sessionId);
     }
 };
 
@@ -30,24 +44,26 @@ const getFullPath = (id: string, files: any): string => {
     return path || '/';
 };
 
-export const getTerminalCwdPath = (): string => {
+export const getTerminalCwdPath = (sessionId?: string): string => {
+  const currentCwdId = getCurrentCwdId(sessionId);
   const store = useWorkspaceStore.getState();
-  if (!store.files[cwdId]) {
-    cwdId = 'root';
+  if (!store.files[currentCwdId]) {
+    setCurrentCwdId('root', sessionId);
   }
-  return getFullPath(cwdId, store.files);
+  return getFullPath(getCurrentCwdId(sessionId), store.files);
 };
 
-export const executeCommand = (input: string): string => {
+export const executeCommand = (input: string, sessionId?: string): string => {
   const args = input.trim().split(/\s+/);
   const cmd = args[0];
   const params = args.slice(1);
   const store = useWorkspaceStore.getState();
-  const currentDir = store.files[cwdId];
+  const currentCwdId = getCurrentCwdId(sessionId);
+  const currentDir = store.files[currentCwdId];
 
   // Safety check if CWD was deleted externally
   if (!currentDir) {
-      cwdId = 'root';
+      setCurrentCwdId('root', sessionId);
       return 'Error: Current directory lost. Resetting to root.';
   }
 
@@ -87,19 +103,19 @@ export const executeCommand = (input: string): string => {
 
     case 'cd': {
         if (params.length === 0) {
-            cwdId = 'root';
+            setCurrentCwdId('root', sessionId);
             return '';
         }
         const targetName = params[0];
         
         if (targetName === '/') {
-            cwdId = 'root';
+            setCurrentCwdId('root', sessionId);
             return '';
         }
         if (targetName === '.') return '';
         if (targetName === '..') {
             if (currentDir.parentId) {
-                cwdId = currentDir.parentId;
+                setCurrentCwdId(currentDir.parentId, sessionId);
             }
             return '';
         }
@@ -108,24 +124,24 @@ export const executeCommand = (input: string): string => {
         if (!target) return `cd: no such file or directory: ${targetName}`;
         if (target.type !== 'folder') return `cd: not a directory: ${targetName}`;
         
-        cwdId = target.id;
+        setCurrentCwdId(target.id, sessionId);
         return '';
     }
 
     case 'pwd':
-        return getFullPath(cwdId, store.files);
+        return getFullPath(getCurrentCwdId(sessionId), store.files);
 
     case 'touch': {
       if (params.length === 0) return 'usage: touch <filename>';
       if (resolveChild(params[0])) return `Error: '${params[0]}' already exists.`;
-      store.createFile(cwdId, params[0]);
+      store.createFile(getCurrentCwdId(sessionId), params[0]);
       return '';
     }
 
     case 'mkdir': {
       if (params.length === 0) return 'usage: mkdir <dirname>';
       if (resolveChild(params[0])) return `Error: '${params[0]}' already exists.`;
-      store.createFolder(cwdId, params[0]);
+      store.createFolder(getCurrentCwdId(sessionId), params[0]);
       return '';
     }
 

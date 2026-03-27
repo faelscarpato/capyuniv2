@@ -1,5 +1,15 @@
-type TerminalBridgeHandler = (cwd: string) => void;
-type TerminalCommandHandler = (command: string) => void;
+export interface TerminalSetCwdEvent {
+  terminalId?: string;
+  cwd: string;
+}
+
+export interface TerminalSendCommandEvent {
+  terminalId?: string;
+  command: string;
+}
+
+type TerminalBridgeHandler = (event: TerminalSetCwdEvent) => void;
+type TerminalCommandHandler = (event: TerminalSendCommandEvent) => void;
 
 const cwdHandlers = new Set<TerminalBridgeHandler>();
 const commandHandlers = new Set<TerminalCommandHandler>();
@@ -9,8 +19,9 @@ export const onTerminalSetCwd = (handler: TerminalBridgeHandler) => {
   return () => cwdHandlers.delete(handler);
 };
 
-export const emitTerminalSetCwd = (cwd: string) => {
-  cwdHandlers.forEach((handler) => handler(cwd));
+export const emitTerminalSetCwd = (event: string | TerminalSetCwdEvent) => {
+  const payload: TerminalSetCwdEvent = typeof event === 'string' ? { cwd: event } : event;
+  cwdHandlers.forEach((handler) => handler(payload));
 };
 
 export const onTerminalSendCommand = (handler: TerminalCommandHandler) => {
@@ -18,6 +29,7 @@ export const onTerminalSendCommand = (handler: TerminalCommandHandler) => {
   return () => commandHandlers.delete(handler);
 };
 
-export const emitTerminalSendCommand = (command: string) => {
-  commandHandlers.forEach((handler) => handler(command));
+export const emitTerminalSendCommand = (event: string | TerminalSendCommandEvent) => {
+  const payload: TerminalSendCommandEvent = typeof event === 'string' ? { command: event } : event;
+  commandHandlers.forEach((handler) => handler(payload));
 };

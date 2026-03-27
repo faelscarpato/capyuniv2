@@ -1,64 +1,115 @@
 import { create } from 'zustand';
-import type { LegacyProvider } from '../services/AIOrchestrator';
+import type { AIProvider } from '../../../lib/aiProvider';
+import { useOnboardingStore } from '../../onboarding/store/onboardingStore';
+
+const STORAGE_KEYS = {
+  preferredProvider: 'capy_preferred_provider',
+  geminiApiKey: 'capy_gemini_key',
+  groqApiKey: 'capy_groq_key',
+  llm7ApiKey: 'capy_llm7_key'
+} as const;
+
+const getInitialProvider = (): AIProvider => {
+  const stored = localStorage.getItem(STORAGE_KEYS.preferredProvider);
+  return stored === 'groq' || stored === 'llm7' ? stored : 'gemini';
+};
 
 export interface AIChatMessage {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'model' | 'assistant' | 'system';
   content: string;
-  createdAt: number;
+  timestamp: number;
+  metadata?: unknown;
 }
 
-interface AIStoreState {
-  preferredProvider: LegacyProvider;
-  keys: {
-    geminiApiKey: string;
-    groqApiKey: string;
-    llm7ApiKey: string;
-  };
+export interface AIStoreState {
+  // Legacy compatibility keys.
+  apiKey: string;
+  geminiApiKey: string;
+  groqApiKey: string;
+  llm7ApiKey: string;
+  preferredProvider: AIProvider;
   messages: AIChatMessage[];
   isLoading: boolean;
-  setPreferredProvider: (provider: LegacyProvider) => void;
-  setProviderKey: (provider: LegacyProvider, key: string) => void;
-  pushMessage: (message: Omit<AIChatMessage, 'id' | 'createdAt'>) => void;
-  clearMessages: () => void;
+  // Legacy actions.
+  setApiKey: (key: string) => void;
+  setProviderApiKey: (provider: AIProvider, key: string) => void;
+  setPreferredProvider: (provider: AIProvider) => void;
+  addMessage: (msg: Omit<AIChatMessage, 'id' | 'timestamp'>) => void;
+  clearHistory: () => void;
   setLoading: (loading: boolean) => void;
+  // V2 aliases.
+  setProviderKey: (provider: AIProvider, key: string) => void;
+  pushMessage: (msg: Omit<AIChatMessage, 'id' | 'timestamp'>) => void;
+  clearMessages: () => void;
 }
 
-const keyForProvider = (provider: LegacyProvider): keyof AIStoreState['keys'] => {
-  if (provider === 'groq') return 'groqApiKey';
-  if (provider === 'llm7') return 'llm7ApiKey';
-  return 'geminiApiKey';
+const createMessage = (message: Omit<AIChatMessage, 'id' | 'timestamp'>): AIChatMessage => ({
+  ...message,
+  id: Math.random().toString(36).slice(2),
+  timestamp: Date.now()
+});
+
+const updateProviderKey = (provider: AIProvider, key: string): Partial<AIStoreState> => {
+  if (provider === 'gemini') {
+    localStorage.setItem(STORAGE_KEYS.geminiApiKey, key);
+    return { geminiApiKey: key, apiKey: key };
+  }
+  if (provider === 'groq') {
+    localStorage.setItem(STORAGE_KEYS.groqApiKey, key);
+    return { groqApiKey: key };
+  }
+  localStorage.setItem(STORAGE_KEYS.llm7ApiKey, key);
+  return { llm7ApiKey: key };
 };
 
 export const useAIStore = create<AIStoreState>((set) => ({
-  preferredProvider: 'gemini',
-  keys: {
-    geminiApiKey: '',
-    groqApiKey: '',
-    llm7ApiKey: ''
-  },
-  messages: [],
+  apiKey: localStorage.getItem(STORAGE_KEYS.geminiApiKey) || '',
+  geminiApiKey: localStorage.getItem(STORAGE_KEYS.geminiApiKey) || '',
+  groqApiKey: localStorage.getItem(STORAGE_KEYS.groqApiKey) || '',
+  llm7ApiKey: localStorage.getItem(STORAGE_KEYS.llm7ApiKey) || '',
+  preferredProvider: getInitialProvider(),
+  messages: [
+    createMessage({
+      role: 'model',
+      content: "Hello! I'm Capy, your AI assistant. Set your API Key to start coding."
+    })
+  ],
   isLoading: false,
-  setPreferredProvider: (provider) => set({ preferredProvider: provider }),
-  setProviderKey: (provider, key) =>
+
+  setApiKey: (key) => {
+    localStorage.setItem(STORAGE_KEYS.geminiApiKey, key);
+    set({ apiKey: key, geminiApiKey: key });
+  },
+
+  setProviderApiKey: (provider, key) => {
+    if (key.trim()) useOnboardingStore.getState().markAIConfigured();
+    set(updateProviderKey(provider, key));
+  },
+
+  setPreferredProvider: (provider) => {
+    localStorage.setItem(STORAGE_KEYS.preferredProvider, provider);
+    set({ preferredProvider: provider });
+  },
+
+  addMessage: (msg) => {
     set((state) => ({
-      keys: {
-        ...state.keys,
-        [keyForProvider(provider)]: key
-      }
-    })),
-  pushMessage: (message) =>
+      messages: [...state.messages, createMessage(msg)]
+    }));
+  },
+
+  clearHistory: () => set({ messages: [] }),
+  setLoading: (loading) => set({ isLoading: loading }),
+
+  setProviderKey: (provider, key) => {
+    if (key.trim()) useOnboardingStore.getState().markAIConfigured();
+    set(updateProviderKey(provider, key));
+  },
+  pushMessage: (msg) => {
     set((state) => ({
-      messages: [
-        ...state.messages,
-        {
-          id: Math.random().toString(36).slice(2),
-          createdAt: Date.now(),
-          ...message
-        }
-      ]
-    })),
-  clearMessages: () => set({ messages: [] }),
-  setLoading: (loading) => set({ isLoading: loading })
+      messages: [...state.messages, createMessage(msg)]
+    }));
+  },
+  clearMessages: () => set({ messages: [] })
 }));
 
