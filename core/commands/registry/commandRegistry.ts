@@ -1,5 +1,6 @@
 export interface CommandHandlerContext {
   source: 'keyboard' | 'palette' | 'menu' | 'api';
+  payload?: unknown;
 }
 
 export type CommandHandler = (ctx: CommandHandlerContext) => void | Promise<void>;
@@ -20,4 +21,3 @@ export const commandRegistry = {
   },
   list: () => Array.from(handlers.keys())
 };
-

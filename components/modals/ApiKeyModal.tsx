@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { AIProvider } from '../../lib/aiProvider';
 import { useUIStore } from '../../stores/uiStore';
-import { useChatStore } from '../../stores/chatStore';
+import { useAIStore } from '../../features/ai/store/aiStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { Icon } from '../ui/Icon';
 
@@ -41,7 +41,7 @@ export const ApiKeyModal: React.FC = () => {
     preferredProvider,
     setPreferredProvider,
     setProviderApiKey
-  } = useChatStore();
+  } = useAIStore();
   const { addNotification } = useNotificationStore();
   const [keyInput, setKeyInput] = useState('');
 

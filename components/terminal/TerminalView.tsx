@@ -5,6 +5,8 @@ import { executeCommand, getTerminalCwdPath } from '../../lib/terminalEngine';
 import { onTerminalSetCwd, onTerminalSendCommand } from '../../lib/terminalBridge';
 import { useUIStore } from '../../stores/uiStore';
 import { useOnboardingStore } from '../../features/onboarding/store/onboardingStore';
+import { TerminalTransport } from '../../core/terminal/services/terminalTransport';
+import { useTerminalStore } from '../../core/terminal/store/terminalStore';
 
 type TerminalMode = 'real' | 'simulated';
 
@@ -19,12 +21,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const commandRef = useRef('');
-  const wsRef = useRef<WebSocket | null>(null);
+  const transportRef = useRef<TerminalTransport | null>(null);
   const modeRef = useRef<TerminalMode>('simulated');
   const hasTrackedUsageRef = useRef(false);
 
   const { currentTheme, isPanelOpen } = useUIStore();
   const { markTerminalUsed } = useOnboardingStore();
+  const { setSessionMode, setSessionCwd } = useTerminalStore();
 
   const getXtermTheme = (themeId: string) => {
     if (themeId === 'midnight-pro') {
@@ -80,8 +83,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
         fitAddonRef.current.fit();
         xtermRef.current.refresh(0, xtermRef.current.rows - 1);
 
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'resize', cols: xtermRef.current.cols, rows: xtermRef.current.rows }));
+        if (transportRef.current?.isConnected()) {
+          transportRef.current.send({ type: 'resize', cols: xtermRef.current.cols, rows: xtermRef.current.rows });
         }
       } catch {
         // noop
@@ -96,7 +99,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
     const arrow = '\x1b[1;32m ➜ \x1b[0m';
     const pathColor = '\x1b[1;35m';
     const reset = '\x1b[0m';
-    const cwd = getTerminalCwdPath();
+    const cwd = getTerminalCwdPath(terminalId);
 
     // Warp-style fancy prompt
     term.write(`\r\n${user}${at}${machine}${arrow}${pathColor}${cwd}${reset} `);
@@ -105,6 +108,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
   const setMode = (term: Terminal, mode: TerminalMode) => {
     if (modeRef.current === mode) return;
     modeRef.current = mode;
+    setSessionMode(terminalId, mode);
 
     if (mode === 'real') {
       term.writeln(`\r\n\x1b[1;32m[Capy PTY]\x1b[0m Connected to instance ${terminalId}`);
@@ -126,54 +130,50 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
     };
 
     try {
-      const ws = new WebSocket(PTY_WS_URL);
-      wsRef.current = ws;
+      const transport = new TerminalTransport();
+      transportRef.current = transport;
 
       fallbackTimer = window.setTimeout(() => {
         if (resolved) return;
         resolved = true;
-        try { ws.close(); } catch { /* noop */ }
+        transport.disconnect();
         announceFallback();
       }, 1200);
 
-      ws.addEventListener('open', () => {
-        if (resolved) return;
-        resolved = true;
-        if (fallbackTimer) window.clearTimeout(fallbackTimer);
-
-        setMode(term, 'real');
-        if (xtermRef.current) {
-          ws.send(JSON.stringify({ type: 'resize', cols: xtermRef.current.cols, rows: xtermRef.current.rows }));
-        }
-        ws.send(JSON.stringify({ type: 'setCwd', cwd: getTerminalCwdPath() }));
-      });
-
-      ws.addEventListener('message', (event) => {
-        if (!xtermRef.current) return;
-        if (typeof event.data === 'string') {
-          xtermRef.current.write(event.data);
-        }
-      });
-
-      ws.addEventListener('close', () => {
-        wsRef.current = null;
-        if (!resolved) {
+      transport.connect(PTY_WS_URL, {
+        onOpen: () => {
+          if (resolved) return;
           resolved = true;
           if (fallbackTimer) window.clearTimeout(fallbackTimer);
-          announceFallback();
-          return;
-        }
 
-        if (modeRef.current === 'real') {
-          setMode(term, 'simulated');
-        }
-      });
+          setMode(term, 'real');
+          if (xtermRef.current) {
+            transport.send({ type: 'resize', cols: xtermRef.current.cols, rows: xtermRef.current.rows });
+          }
+      transport.send({ type: 'setCwd', cwd: getTerminalCwdPath(terminalId) });
+        },
+        onPtyData: (data) => {
+          if (!xtermRef.current) return;
+          xtermRef.current.write(data);
+        },
+        onClose: () => {
+          if (!resolved) {
+            resolved = true;
+            if (fallbackTimer) window.clearTimeout(fallbackTimer);
+            announceFallback();
+            return;
+          }
 
-      ws.addEventListener('error', () => {
-        if (!resolved) {
-          resolved = true;
-          if (fallbackTimer) window.clearTimeout(fallbackTimer);
-          announceFallback();
+          if (modeRef.current === 'real') {
+            setMode(term, 'simulated');
+          }
+        },
+        onError: () => {
+          if (!resolved) {
+            resolved = true;
+            if (fallbackTimer) window.clearTimeout(fallbackTimer);
+            announceFallback();
+          }
         }
       });
     } catch {
@@ -202,7 +202,7 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
       }
 
       if (command.length > 0) {
-        const output = executeCommand(command);
+        const output = executeCommand(command, terminalId);
         if (output) term?.writeln(output);
       }
 
@@ -252,9 +252,13 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
 
         tryConnectRealTerminal(term);
 
-        unsubscribeCommand = onTerminalSendCommand((cmd) => {
-          if (modeRef.current === 'real' && wsRef.current?.readyState === WebSocket.OPEN) {
-            wsRef.current.send(JSON.stringify({ type: 'input', data: cmd }));
+        unsubscribeCommand = onTerminalSendCommand((event) => {
+          const targetTerminalId = event.terminalId;
+          if (targetTerminalId && targetTerminalId !== terminalId) return;
+          const cmd = event.command;
+
+          if (modeRef.current === 'real' && transportRef.current?.isConnected()) {
+            transportRef.current.send({ type: 'input', data: cmd });
           } else if (modeRef.current === 'simulated' && term) {
             const sanitized = cmd.replace(/\r$/, '');
             term.write(sanitized);
@@ -270,8 +274,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
           }
 
           if (modeRef.current === 'real') {
-            if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-              wsRef.current.send(JSON.stringify({ type: 'input', data }));
+            if (transportRef.current?.isConnected()) {
+              transportRef.current.send({ type: 'input', data });
             }
             return;
           }
@@ -305,9 +309,14 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
           }
         });
 
-        unsubscribeSetCwd = onTerminalSetCwd((cwd) => {
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN && modeRef.current === 'real') {
-            wsRef.current.send(JSON.stringify({ type: 'setCwd', cwd }));
+        unsubscribeSetCwd = onTerminalSetCwd((event) => {
+          const targetTerminalId = event.terminalId;
+          if (targetTerminalId && targetTerminalId !== terminalId) return;
+          const cwd = event.cwd;
+
+          setSessionCwd(terminalId, cwd);
+          if (transportRef.current?.isConnected() && modeRef.current === 'real') {
+            transportRef.current.send({ type: 'setCwd', cwd });
           }
         });
 
@@ -336,10 +345,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
       unsubscribeSetCwd?.();
       unsubscribeCommand?.();
       resizeObserver?.disconnect();
-      if (wsRef.current) {
-        try { wsRef.current.close(); } catch { }
-        wsRef.current = null;
-      }
+      transportRef.current?.disconnect();
+      transportRef.current = null;
       term?.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;

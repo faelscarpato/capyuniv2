@@ -4,13 +4,13 @@ import { useNotificationStore } from '../../stores/notificationStore';
 import { Icon } from '../ui/Icon';
 import { t } from '../../lib/i18n';
 import { emitTerminalSendCommand } from '../../lib/terminalBridge';
+import { useTerminalStore } from '../../core/terminal/store/terminalStore';
 
-import { useWorkspaceStore } from '../../stores/workspaceStore';
+import { executeAppCommand } from '../../core/commands/handlers/registerDefaultCommands';
 
 export const GitView: React.FC = () => {
-    const { language, setPanelOpen, setActivePanelTab } = useUIStore();
+    const { language } = useUIStore();
     const { addNotification } = useNotificationStore();
-    const { refreshFromPTY } = useWorkspaceStore();
     const [repoUrl, setRepoUrl] = useState('');
 
     const handleClone = () => {
@@ -29,13 +29,14 @@ export const GitView: React.FC = () => {
         addNotification('info', `Clonando ${repoName}...`);
 
         // Open terminal to execute git clone
-        setPanelOpen(true);
-        setActivePanelTab('TERMINAL');
+        executeAppCommand('panel.openTerminal');
 
         // We'll give it a tiny delay to ensure terminal is ready/visible
         setTimeout(() => {
+            const terminalState = useTerminalStore.getState();
+            const terminalId = terminalState.activeSessionId || terminalState.ensureSession();
             // We remove the '.' to let git create a new folder and avoid "directory not empty" errors
-            emitTerminalSendCommand(`git clone ${url}\r`);
+            emitTerminalSendCommand({ terminalId, command: `git clone ${url}\r` });
             addNotification('success', 'Comando enviado ao terminal!');
         }, 500);
     };
@@ -45,7 +46,7 @@ export const GitView: React.FC = () => {
             <div className="flex items-center justify-between px-5 py-4 text-[11px] font-bold uppercase tracking-[0.15em] text-ide-muted">
                 <span>Source Control</span>
                 <button
-                    onClick={refreshFromPTY}
+                    onClick={() => executeAppCommand('workspace.syncFromPTY')}
                     className="p-1.5 hover:bg-white/5 rounded-lg transition-colors group"
                     title="Sincronizar arquivos do servidor"
                 >

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { useChatStore } from '../../stores/chatStore';
+import { useAIStore } from '../../features/ai/store/aiStore';
 import { useUIStore } from '../../stores/uiStore';
 import { generateNanoImage } from '../../lib/geminiClient';
 import { Icon } from '../ui/Icon';
 import { t } from '../../lib/i18n';
 
 export const NanoBananaView: React.FC = () => {
-    const { apiKey } = useChatStore();
+    const { apiKey } = useAIStore();
     const { language } = useUIStore();
     
     const [prompt, setPrompt] = useState('');

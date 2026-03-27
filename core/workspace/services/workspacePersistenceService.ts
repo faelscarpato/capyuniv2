@@ -1,14 +1,13 @@
-import { get, set } from 'idb-keyval';
-import type { WorkspaceSnapshot } from '../store/workspaceStore';
-
-const WORKSPACE_STORAGE_KEY = 'capy_workspace_v2';
+import type { WorkspaceState } from '../../../types';
+import { loadWorkspace, saveWorkspace } from '../../../lib/storage';
 
 export const workspacePersistenceService = {
-  save: async (snapshot: WorkspaceSnapshot): Promise<void> => {
-    await set(WORKSPACE_STORAGE_KEY, snapshot);
+  load: async (): Promise<WorkspaceState | undefined> => {
+    return loadWorkspace();
   },
-  load: async (): Promise<WorkspaceSnapshot | undefined> => {
-    return get<WorkspaceSnapshot>(WORKSPACE_STORAGE_KEY);
+
+  save: async (state: WorkspaceState): Promise<void> => {
+    await saveWorkspace(state);
   }
 };
 

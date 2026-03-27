@@ -2,17 +2,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useUIStore } from '../../stores/uiStore';
 import { Icon } from '../ui/Icon';
-import { exportWorkspaceToZip, importWorkspaceFromZip } from '../../lib/zip.ts';
+import { workspacePackageService } from '../../features/productivity/import-export/workspacePackageService';
 import { themes } from '../../lib/themes';
+import { useNotificationStore } from '../../stores/notificationStore';
+import { executePaletteCommand } from '../../core/commands/handlers/registerDefaultCommands';
 
 export const CommandPalette: React.FC = () => {
-  const { 
-    isCommandPaletteOpen, setCommandPalette, 
-    toggleSidebar, togglePanel, setActiveSidebarView, setSidebarOpen, setTheme,
-    setRightSidebarOpen 
-  } = useUIStore();
+  const { isCommandPaletteOpen, setCommandPalette, setTheme } = useUIStore();
   
-  const { createFile, createFolder, files, importWorkspaceData } = useWorkspaceStore();
+  const { importWorkspaceData } = useWorkspaceStore();
+  const { addNotification } = useNotificationStore();
   
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
@@ -29,18 +28,25 @@ export const CommandPalette: React.FC = () => {
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
-          const newFiles = await importWorkspaceFromZip(e.target.files[0]);
-          if (newFiles) {
+          addNotification('info', 'Importando workspace...', 2000);
+          try {
+            const newFiles = await workspacePackageService.importZip(e.target.files[0]);
+            if (newFiles) {
               importWorkspaceData(newFiles);
-              alert("Workspace imported successfully!");
+              addNotification('success', 'Workspace importado com sucesso!');
+            } else {
+              addNotification('error', 'Falha ao processar o arquivo ZIP.');
+            }
+          } catch {
+            addNotification('error', 'Erro ao carregar o arquivo ZIP.');
           }
       }
       setCommandPalette(false);
   };
 
   const commands = [
-    { label: 'View: Toggle Sidebar', action: toggleSidebar, icon: 'Layout' },
-    { label: 'View: Toggle Panel', action: togglePanel, icon: 'PanelBottom' },
+    { label: 'View: Toggle Sidebar', action: () => executePaletteCommand('ui.toggleSidebar'), icon: 'Layout' },
+    { label: 'View: Toggle Panel', action: () => executePaletteCommand('ui.togglePanel'), icon: 'PanelBottom' },
     
     // Theme Commands
     ...Object.values(themes).map(theme => ({
@@ -49,10 +55,10 @@ export const CommandPalette: React.FC = () => {
         icon: 'Palette'
     })),
 
-    { label: 'Capy: Open Chat', action: () => { setRightSidebarOpen(true); }, icon: 'Bot' },
-    { label: 'Workspace: New File', action: () => createFile('root', prompt('Filename:') || 'untitled'), icon: 'FilePlus' },
-    { label: 'Workspace: New Folder', action: () => createFolder('root', prompt('Folder name:') || 'new_folder'), icon: 'FolderPlus' },
-    { label: 'Workspace: Export Zip', action: () => exportWorkspaceToZip(files), icon: 'Download' },
+    { label: 'Capy: Open Chat', action: () => executePaletteCommand('ui.openChat'), icon: 'Bot' },
+    { label: 'Workspace: New File', action: () => executePaletteCommand('workspace.createFile'), icon: 'FilePlus' },
+    { label: 'Workspace: New Folder', action: () => executePaletteCommand('workspace.createFolder'), icon: 'FolderPlus' },
+    { label: 'Workspace: Export Zip', action: () => executePaletteCommand('workspace.exportZip'), icon: 'Download' },
     { label: 'Workspace: Import Zip', action: () => fileInputRef.current?.click(), icon: 'Upload' },
   ];
 

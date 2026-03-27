@@ -3,6 +3,7 @@ import { MainLayout } from './components/layout/MainLayout';
 import { WelcomeScreen } from './components/layout/WelcomeScreen';
 import { useWorkspaceStore } from './stores/workspaceStore';
 import { useOnboardingStore } from './features/onboarding/store/onboardingStore';
+import { registerDefaultCommands } from './core/commands/handlers/registerDefaultCommands';
 import registerServiceWorker from './registerServiceWorker';
 
 const App: React.FC = () => {
@@ -11,6 +12,7 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    registerDefaultCommands();
     initialize().then(() => {
       // Simulate a small delay for "checking resources" feel or just load fast
       setTimeout(() => setLoading(false), 500);

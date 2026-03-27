@@ -1,12 +1,12 @@
 import React, { useMemo, useState } from 'react';
-import { useChatStore } from '../../stores/chatStore';
+import { useAIStore } from '../../features/ai/store/aiStore';
 import { websearch } from '../../lib/websearch';
 import { Icon } from '../ui/Icon';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
 export const GroundingView: React.FC = () => {
-  const { llm7ApiKey } = useChatStore();
+  const { llm7ApiKey } = useAIStore();
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ text: string; chunks: Array<{ title: string; url: string; snippet: string }> } | null>(null);

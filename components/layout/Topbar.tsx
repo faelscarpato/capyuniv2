@@ -2,17 +2,17 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Icon } from '../ui/Icon';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useUIStore } from '../../stores/uiStore';
-import { exportWorkspaceToZip, importWorkspaceFromZip } from '../../lib/zip.ts';
+import { workspacePackageService } from '../../features/productivity/import-export/workspacePackageService';
 import { themes } from '../../lib/themes';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { t } from '../../lib/i18n';
+import { executeAppCommand, executeMenuCommand } from '../../core/commands/handlers/registerDefaultCommands';
 
 export const Topbar: React.FC = () => {
-  const { createFile, createFolder, activeTabId, files, renameNode, deleteNode, importWorkspaceData, saveAll, closeWorkspace } = useWorkspaceStore();
+  const { importWorkspaceData } = useWorkspaceStore();
   const {
-    setSidebarOpen, setPanelOpen, setActivePanelTab, setActiveSidebarView,
-    setTheme, toggleQuickOpen, toggleSidebar, togglePanel,
-    setAboutOpen, setDocsOpen, setActiveRightSidebarView, setRightSidebarOpen,
+    setTheme, toggleQuickOpen,
+    setAboutOpen, setDocsOpen,
     setTutorialOpen, isMobile, currentTheme, language, setLanguage, setApiKeyModalOpen
   } = useUIStore();
   const { addNotification } = useNotificationStore();
@@ -36,7 +36,7 @@ export const Topbar: React.FC = () => {
     if (file) {
       addNotification('info', 'Importando workspace...', 2000);
       try {
-        const newFiles = await importWorkspaceFromZip(file);
+        const newFiles = await workspacePackageService.importZip(file);
         if (newFiles) {
           importWorkspaceData(newFiles);
           addNotification('success', 'Workspace importado com sucesso!');
@@ -61,39 +61,14 @@ export const Topbar: React.FC = () => {
     setActiveMenu(null);
   };
 
-  const handleWelcomeReload = async () => {
-    const shouldExport = confirm("ATENÇÃO: Recarregar a página pode perder alterações não salvas.\nDeseja EXPORTAR (Baixar .zip) seu projeto atual antes de reiniciar?");
-
-    if (shouldExport) {
-      await exportWorkspaceToZip(files);
-      setTimeout(() => {
-        window.location.reload();
-      }, 1000);
-    } else {
-      if (confirm("Tem certeza? Alterações não salvas no IndexedDB podem ser sobrescritas ou perdidas se não sincronizadas.")) {
-        window.location.reload();
-      }
-    }
+  const handleWelcomeReload = () => {
+    executeMenuCommand('workspace.reload');
     setActiveMenu(null);
   };
 
-  const openRightView = (view: 'chat' | 'preview' | 'capyuniverse') => {
-    setActiveRightSidebarView(view);
-    setRightSidebarOpen(true);
+  const runCommandAndClose = (id: string) => {
+    executeAppCommand(id);
     setActiveMenu(null);
-  };
-
-  const openLeftView = (view: 'explorer' | 'search' | 'extensions' | 'grounding') => {
-    setActiveSidebarView(view);
-    setSidebarOpen(true);
-    setActiveMenu(null);
-  }
-
-  const getActiveParent = () => {
-    if (activeTabId && files[activeTabId]) {
-      return files[activeTabId].parentId || 'root';
-    }
-    return 'root';
   };
 
   // Generate Theme Menu Items dynamically
@@ -106,47 +81,47 @@ export const Topbar: React.FC = () => {
 
   const menuItems: Record<string, { label: string; action: () => void; shortcut?: string; separator?: boolean; danger?: boolean; icon?: any; active?: boolean }[]> = {
     [t('file', language)]: [
-      { label: t('newFile', language), action: () => { createFile(getActiveParent(), prompt('Filename:') || 'untitled'); setActiveMenu(null); }, shortcut: 'Ctrl+N' },
-      { label: t('newFolder', language), action: () => { createFolder(getActiveParent(), prompt('Folder name:') || 'new_folder'); setActiveMenu(null); } },
+      { label: t('newFile', language), action: () => { executeMenuCommand('workspace.createFile'); setActiveMenu(null); }, shortcut: 'Ctrl+N' },
+      { label: t('newFolder', language), action: () => { executeMenuCommand('workspace.createFolder'); setActiveMenu(null); } },
       { label: t('openFile', language), action: () => { toggleQuickOpen(); setActiveMenu(null); }, shortcut: 'Ctrl+P' },
       { label: '', action: () => { }, separator: true },
-      { label: t('saveWorkspace', language), action: () => { saveAll(); setActiveMenu(null); }, shortcut: 'Ctrl+S' },
+      { label: t('saveWorkspace', language), action: () => { executeMenuCommand('workspace.save'); setActiveMenu(null); }, shortcut: 'Ctrl+S' },
       { label: '', action: () => { }, separator: true },
-      { label: t('renameFile', language), action: () => { if (activeTabId) renameNode(activeTabId, prompt('New Name', files[activeTabId].name) || files[activeTabId].name); setActiveMenu(null); } },
-      { label: t('deleteFile', language), action: () => { if (activeTabId && confirm('Delete?')) deleteNode(activeTabId); setActiveMenu(null); }, danger: true },
+      { label: t('renameFile', language), action: () => { executeMenuCommand('workspace.renameActive'); setActiveMenu(null); } },
+      { label: t('deleteFile', language), action: () => { executeMenuCommand('workspace.deleteActive'); setActiveMenu(null); }, danger: true },
       { label: '', action: () => { }, separator: true },
       { label: t('importZip', language), action: handleImportClick },
-      { label: t('exportZip', language), action: () => { exportWorkspaceToZip(files); setActiveMenu(null); } },
+      { label: t('exportZip', language), action: () => { executeMenuCommand('workspace.exportZip'); setActiveMenu(null); } },
       { label: '', action: () => { }, separator: true },
-      { label: t('closeProject', language), action: () => { if (confirm('Are you sure you want to close the workspace? Unsaved changes will be lost.')) closeWorkspace(); setActiveMenu(null); }, danger: true },
+      { label: t('closeProject', language), action: () => { executeMenuCommand('workspace.close'); setActiveMenu(null); }, danger: true },
     ],
     [t('edit', language)]: [
       { label: t('undo', language), action: () => { setActiveMenu(null); }, shortcut: 'Ctrl+Z' },
       { label: t('redo', language), action: () => { setActiveMenu(null); }, shortcut: 'Ctrl+Y' },
       { label: '', action: () => { }, separator: true },
-      { label: t('find', language), action: () => { openLeftView('search'); }, shortcut: 'Ctrl+F' },
-      { label: t('replace', language), action: () => { openLeftView('search'); }, shortcut: 'Ctrl+H' },
+      { label: t('find', language), action: () => runCommandAndClose('ui.openSearch'), shortcut: 'Ctrl+F' },
+      { label: t('replace', language), action: () => runCommandAndClose('ui.openSearch'), shortcut: 'Ctrl+H' },
     ],
     [t('view', language)]: [
-      { label: t('explorer', language), action: () => openLeftView('explorer'), shortcut: 'Ctrl+Shift+E', icon: 'Files' },
-      { label: t('search', language), action: () => openLeftView('search'), shortcut: 'Ctrl+Shift+F', icon: 'Search' },
-      { label: t('extensions', language), action: () => openLeftView('extensions'), shortcut: 'Ctrl+Shift+X', icon: 'Blocks' },
+      { label: t('explorer', language), action: () => { executeMenuCommand('ui.openExplorer'); setActiveMenu(null); }, shortcut: 'Ctrl+Shift+E', icon: 'Files' },
+      { label: t('search', language), action: () => { executeMenuCommand('ui.openSearch'); setActiveMenu(null); }, shortcut: 'Ctrl+Shift+F', icon: 'Search' },
+      { label: t('extensions', language), action: () => { executeMenuCommand('ui.openExtensions'); setActiveMenu(null); }, shortcut: 'Ctrl+Shift+X', icon: 'Blocks' },
       { label: '', action: () => { }, separator: true },
-      { label: t('toggleSidebar', language), action: () => { toggleSidebar(); setActiveMenu(null); }, shortcut: 'Ctrl+B' },
-      { label: t('togglePanel', language), action: () => { togglePanel(); setActiveMenu(null); }, shortcut: 'Ctrl+`' },
+      { label: t('toggleSidebar', language), action: () => { executeMenuCommand('ui.toggleSidebar'); setActiveMenu(null); }, shortcut: 'Ctrl+B' },
+      { label: t('togglePanel', language), action: () => { executeMenuCommand('ui.togglePanel'); setActiveMenu(null); }, shortcut: 'Ctrl+`' },
     ],
     // New Functions Menu
     [t('functions', language)]: [
-      { label: t('webPreview', language), action: () => openRightView('preview'), icon: 'Globe' },
-      { label: t('capyUniverse', language), action: () => openRightView('capyuniverse'), icon: 'Rocket' },
-      { label: t('aiChat', language), action: () => openRightView('chat'), icon: 'Bot' },
-      { label: t('webSearch', language), action: () => openLeftView('grounding'), icon: 'Globe2' },
+      { label: t('webPreview', language), action: () => runCommandAndClose('ui.openPreviewRight'), icon: 'Globe' },
+      { label: t('capyUniverse', language), action: () => runCommandAndClose('ui.openCapyUniverse'), icon: 'Rocket' },
+      { label: t('aiChat', language), action: () => { executeMenuCommand('ui.openChat'); setActiveMenu(null); }, icon: 'Bot' },
+      { label: t('webSearch', language), action: () => runCommandAndClose('ui.openGrounding'), icon: 'Globe2' },
       { label: '', action: () => { }, separator: true },
       // Themes moved here
       ...themeItems
     ],
     [t('run', language)]: [
-      { label: t('startPreview', language), action: () => { setActivePanelTab('PREVIEW'); setPanelOpen(true); setActiveMenu(null); }, shortcut: 'F5' },
+      { label: t('startPreview', language), action: () => runCommandAndClose('panel.openPreview'), shortcut: 'F5' },
     ],
     [t('help', language)]: [
       { label: t('welcome', language), action: handleWelcomeReload, icon: 'RefreshCcw' },

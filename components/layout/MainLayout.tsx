@@ -1,24 +1,35 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { Suspense, lazy, useEffect, useState, useRef } from 'react';
 import { Topbar } from './Topbar';
 import { ActivityBar } from './ActivityBar';
-import { Sidebar } from './Sidebar';
-import { RightSidebar } from './RightSidebar';
 import { StatusBar } from './StatusBar';
-import { EditorArea } from '../editor/EditorArea';
-import { Panel } from './Panel';
 import { useUIStore } from '../../stores/uiStore';
-import { QuickOpen } from '../command/QuickOpen';
-import { CommandPalette } from '../command/CommandPalette';
 import { ToastContainer } from '../ui/Toast';
-import { AboutModal } from '../modals/AboutModal';
-import { DocsModal } from '../modals/DocsModal';
-import { TutorialModal } from '../modals/TutorialModal';
-import { ApiKeyModal } from '../modals/ApiKeyModal';
 import { applyTheme } from '../../lib/themes';
+
+const Sidebar = lazy(() => import('./Sidebar').then((mod) => ({ default: mod.Sidebar })));
+const RightSidebar = lazy(() => import('./RightSidebar').then((mod) => ({ default: mod.RightSidebar })));
+const EditorArea = lazy(() => import('../editor/EditorArea').then((mod) => ({ default: mod.EditorArea })));
+const Panel = lazy(() => import('./Panel').then((mod) => ({ default: mod.Panel })));
+const QuickOpen = lazy(() => import('../command/QuickOpen').then((mod) => ({ default: mod.QuickOpen })));
+const CommandPalette = lazy(() =>
+  import('../command/CommandPalette').then((mod) => ({ default: mod.CommandPalette }))
+);
+const AboutModal = lazy(() => import('../modals/AboutModal').then((mod) => ({ default: mod.AboutModal })));
+const DocsModal = lazy(() => import('../modals/DocsModal').then((mod) => ({ default: mod.DocsModal })));
+const TutorialModal = lazy(() =>
+  import('../modals/TutorialModal').then((mod) => ({ default: mod.TutorialModal }))
+);
+const ApiKeyModal = lazy(() => import('../modals/ApiKeyModal').then((mod) => ({ default: mod.ApiKeyModal })));
+const WorkspaceActionDialogModal = lazy(() =>
+  import('../modals/WorkspaceActionDialogModal').then((mod) => ({ default: mod.WorkspaceActionDialogModal }))
+);
+const ConfirmDialogModal = lazy(() =>
+  import('../modals/ConfirmDialogModal').then((mod) => ({ default: mod.ConfirmDialogModal }))
+);
 
 export const MainLayout: React.FC = () => {
     const {
-        toggleSidebar, toggleQuickOpen, toggleCommandPalette, togglePanel, currentTheme,
+        currentTheme,
         isSidebarOpen, sidebarWidth, setSidebarWidth, setSidebarOpen,
         isRightSidebarOpen, rightSidebarWidth, setRightSidebarWidth, setRightSidebarOpen,
         isMobile, setIsMobile, setTutorialOpen
@@ -124,7 +135,9 @@ export const MainLayout: React.FC = () => {
                         }
             `}
                 >
-                    <Sidebar />
+                    <Suspense fallback={<div className="h-full w-full animate-pulse bg-ide-sidebar/70" />}>
+                        <Sidebar />
+                    </Suspense>
                 </aside>
 
                 {/* Left Resizer (Desktop) */}
@@ -137,7 +150,9 @@ export const MainLayout: React.FC = () => {
 
                 {/* --- MAIN EDITOR AREA --- */}
                 <main className={`flex-1 flex flex-col min-w-0 min-h-0 relative bg-ide-bg transition-all duration-300 overflow-hidden ${isMobile ? 'pb-[calc(76px+env(safe-area-inset-bottom))]' : ''}`}>
-                    <EditorArea />
+                    <Suspense fallback={<div className="flex-1 animate-pulse bg-ide-bg/70" />}>
+                        <EditorArea />
+                    </Suspense>
 
                     {/* Mobile Backdrop Overlay */}
                     {isMobile && (isSidebarOpen || isRightSidebarOpen) && (
@@ -150,7 +165,9 @@ export const MainLayout: React.FC = () => {
                     {/* Desktop Resizing Overlay (Protects iframe events) */}
                     {isResizing && <div className="absolute inset-0 z-[100] cursor-col-resize" />}
 
-                    <Panel />
+                    <Suspense fallback={<div className="h-0" />}>
+                        <Panel />
+                    </Suspense>
                 </main>
 
                 {/* Right Resizer (Desktop) */}
@@ -172,7 +189,9 @@ export const MainLayout: React.FC = () => {
                         }
             `}
                 >
-                    <RightSidebar />
+                    <Suspense fallback={<div className="h-full w-full animate-pulse bg-ide-sidebar/70" />}>
+                        <RightSidebar />
+                    </Suspense>
                 </aside>
             </div>
 
@@ -183,12 +202,16 @@ export const MainLayout: React.FC = () => {
             {!isMobile && <StatusBar />}
 
             {/* Global Modals */}
-            <QuickOpen />
-            <CommandPalette />
-            <AboutModal />
-            <DocsModal />
-            <TutorialModal />
-            <ApiKeyModal />
+            <Suspense fallback={null}>
+                <QuickOpen />
+                <CommandPalette />
+                <AboutModal />
+                <DocsModal />
+                <TutorialModal />
+                <ApiKeyModal />
+                <WorkspaceActionDialogModal />
+                <ConfirmDialogModal />
+            </Suspense>
             <ToastContainer />
         </div>
     );

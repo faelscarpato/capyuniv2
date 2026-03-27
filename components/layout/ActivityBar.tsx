@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { useUIStore, SidebarViewType } from '../../stores/uiStore';
 import { Icon } from '../ui/Icon';
+import { executeAppCommand } from '../../core/commands/handlers/registerDefaultCommands';
 
 export const ActivityBar: React.FC = () => {
   const {
     activeSidebarView, setActiveSidebarView,
     isSidebarOpen, setSidebarOpen,
     isPanelOpen, activePanelTab,
-    togglePanel, setActivePanelTab, setPanelOpen,
-    isRightSidebarOpen, toggleRightSidebar,
-    setActiveRightSidebarView, activeRightSidebarView, setRightSidebarOpen,
-    isMobile, setCommandPalette
+    isRightSidebarOpen,
+    activeRightSidebarView, setRightSidebarOpen,
+    isMobile
   } = useUIStore();
 
   const [showMobileMore, setShowMobileMore] = useState(false);
@@ -19,8 +19,14 @@ export const ActivityBar: React.FC = () => {
     if (activeSidebarView === view && isSidebarOpen) {
       setSidebarOpen(false);
     } else {
-      setActiveSidebarView(view);
-      setSidebarOpen(true);
+      if (view === 'explorer') executeAppCommand('ui.openExplorer');
+      else if (view === 'search') executeAppCommand('ui.openSearch');
+      else if (view === 'grounding') executeAppCommand('ui.openGrounding');
+      else if (view === 'source_control') executeAppCommand('ui.openSourceControl');
+      else {
+        setActiveSidebarView(view);
+        setSidebarOpen(true);
+      }
     }
   };
 
@@ -28,14 +34,10 @@ export const ActivityBar: React.FC = () => {
     if (activeRightSidebarView === view && isRightSidebarOpen) {
       setRightSidebarOpen(false);
     } else {
-      setActiveRightSidebarView(view);
-      setRightSidebarOpen(true);
+      if (view === 'chat') executeAppCommand('ui.openChat');
+      else if (view === 'preview') executeAppCommand('ui.openPreviewRight');
+      else executeAppCommand('ui.openCapyUniverse');
     }
-  };
-
-  const handleRunClick = () => {
-    setPanelOpen(true);
-    setActivePanelTab('PREVIEW');
   };
 
   const Item = ({ view, icon, label, color, activeCondition, onClick }: { view?: SidebarViewType, icon: any, label: string, color?: string, activeCondition?: boolean, onClick?: () => void }) => {
@@ -88,7 +90,7 @@ export const ActivityBar: React.FC = () => {
           {/* Center Action Button */}
           <button
             type="button"
-            onClick={() => setCommandPalette(true)}
+            onClick={() => executeAppCommand('ui.openCommandPalette')}
             className="flex items-center justify-center w-12 h-12 -mt-6 bg-ide-accent rounded-full shadow-lg shadow-ide-accent/40 text-white border-4 border-ide-bg"
           >
             <Icon name="TerminalSquare" size={24} />
@@ -125,8 +127,7 @@ export const ActivityBar: React.FC = () => {
             </button>
             <div className="h-px bg-white/10 my-1" />
             <button type="button" onClick={() => {
-              setPanelOpen(true);
-              setActivePanelTab('TERMINAL');
+              executeAppCommand('panel.openTerminal');
               setShowMobileMore(false);
             }} className="flex items-center gap-3 p-3 rounded-lg hover:bg-white/10 text-ide-text">
               <Icon name="Terminal" size={18} /> Terminal
@@ -181,16 +182,7 @@ export const ActivityBar: React.FC = () => {
 
       <button
         type="button"
-        onClick={() => {
-          if (!isPanelOpen) {
-            setPanelOpen(true);
-            setActivePanelTab('TERMINAL');
-          } else if (activePanelTab !== 'TERMINAL') {
-            setActivePanelTab('TERMINAL');
-          } else {
-            setPanelOpen(false);
-          }
-        }}
+        onClick={() => executeAppCommand('panel.toggleTerminal')}
         className="w-full h-12 flex items-center justify-center text-ide-muted hover:text-ide-text transition-all active:scale-90"
         title="Terminal / Console"
       >

@@ -1,19 +1,15 @@
-import React, { useState, useRef, useEffect } from 'react';
-import OpenAI from 'openai';
-import type { ChatCompletionMessageParam, ChatCompletionTool } from 'openai/resources/chat/completions';
-import { GoogleGenAI, Type, FunctionDeclaration, Content } from '@google/genai';
+import React, { useEffect, useRef, useState } from 'react';
 import type { AIProvider } from '../../lib/aiProvider';
-import { GROQ_MODELS } from '../../lib/groqClient';
-import { LLM7_MODELS } from '../../lib/llm7Client';
-import { useChatStore } from '../../stores/chatStore';
+import { useAIStore } from '../../features/ai/store/aiStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useNotificationStore } from '../../stores/notificationStore';
 import { triggerChatSkill, type ChatContext } from '../../lib/extensions';
 import { emitTerminalSendCommand } from '../../lib/terminalBridge';
+import { useTerminalStore } from '../../core/terminal/store/terminalStore';
 import { Icon } from '../ui/Icon';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
-import { FileNode } from '../../types';
+import { runChatAgent } from '../../features/ai/services/chatAgentService';
 
 const PROVIDER_OPTIONS: Array<{
   id: AIProvider;
@@ -41,68 +37,6 @@ const PROVIDER_OPTIONS: Array<{
   }
 ];
 
-const OPENAI_TOOLS: ChatCompletionTool[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'write_file',
-      description:
-        'Creates or OVERWRITES a file at the given path with specified content. Use this to write code.',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: 'Relative path (e.g., src/App.tsx)' },
-          content: { type: 'string', description: 'The FULL content of the file.' }
-        },
-        required: ['path', 'content'],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'read_file',
-      description: 'Reads the content of a file.',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: { type: 'string', description: 'Relative path.' }
-        },
-        required: ['path'],
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'list_files',
-      description: 'Lists all files in the project.',
-      parameters: {
-        type: 'object',
-        properties: {},
-        additionalProperties: false
-      }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'delete_file',
-      description: 'Deletes a file.',
-      parameters: {
-        type: 'object',
-        properties: {
-          path: { type: 'string' }
-        },
-        required: ['path'],
-        additionalProperties: false
-      }
-    }
-  }
-];
-
 const getProviderApiKey = (
   provider: AIProvider,
   keys: { geminiApiKey: string; groqApiKey: string; llm7ApiKey: string }
@@ -125,7 +59,7 @@ export const CapyChat: React.FC = () => {
     preferredProvider,
     setProviderApiKey,
     setPreferredProvider
-  } = useChatStore();
+  } = useAIStore();
   const { activeTabId, files, createFileByPath, deleteFileByPath, getFileByPath } = useWorkspaceStore();
   const { addNotification } = useNotificationStore();
 
@@ -152,360 +86,6 @@ export const CapyChat: React.FC = () => {
     }
   }, [messages, isLoading]);
 
-  // --- TOOLS DEFINITION ---
-  const writeFileTool: FunctionDeclaration = {
-    name: 'write_file',
-    parameters: {
-      type: Type.OBJECT,
-      description:
-        'Creates or OVERWRITES a file at the given path with specified content. Use this to write code.',
-      properties: {
-        path: { type: Type.STRING, description: 'Relative path (e.g., src/App.tsx)' },
-        content: { type: Type.STRING, description: 'The FULL content of the file.' }
-      },
-      required: ['path', 'content']
-    }
-  };
-
-  const readFileTool: FunctionDeclaration = {
-    name: 'read_file',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Reads the content of a file.',
-      properties: {
-        path: { type: Type.STRING, description: 'Relative path.' }
-      },
-      required: ['path']
-    }
-  };
-
-  const listFilesTool: FunctionDeclaration = {
-    name: 'list_files',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Lists all files in the project.',
-      properties: {}
-    }
-  };
-
-  const deleteFileTool: FunctionDeclaration = {
-    name: 'delete_file',
-    parameters: {
-      type: Type.OBJECT,
-      description: 'Deletes a file.',
-      properties: { path: { type: Type.STRING } },
-      required: ['path']
-    }
-  };
-
-  // --- HELPERS ---
-  const getWorkspaceSummary = () => {
-    const tree: string[] = [];
-
-    const traverse = (id: string, path: string) => {
-      const node = files[id];
-      if (!node || (node.id === 'root' && id !== 'root')) return;
-      const currentPath = id === 'root' ? '' : path ? `${path}/${node.name}` : node.name;
-
-      if (id !== 'root') tree.push(currentPath);
-      if (node.type === 'folder') {
-        node.childrenIds.forEach((childId) => traverse(childId, currentPath));
-      }
-    };
-
-    traverse('root', '');
-    return tree.join('\n');
-  };
-
-  const getRelevantFileContext = (userMsg: string): string => {
-    let context = '';
-    const allFiles = Object.values(files) as FileNode[];
-
-    if (activeTabId && files[activeTabId] && files[activeTabId].type === 'file') {
-      context += `\n[CURRENTLY OPEN FILE]: ${files[activeTabId].name}\n\`\`\`\n${files[activeTabId].content}\n\`\`\`\n`;
-    }
-
-    const mentionedFiles = allFiles.filter(
-      (file) => file.type === 'file' && file.id !== activeTabId && userMsg.includes(file.name)
-    );
-
-    if (mentionedFiles.length > 0) {
-      context += `\n[REFERENCED FILES]:\n`;
-      mentionedFiles.forEach((file) => {
-        context += `File: ${file.name}\n\`\`\`\n${file.content}\n\`\`\`\n`;
-      });
-    }
-
-    return context;
-  };
-
-  const buildDynamicSystemPrompt = (userMsg: string): string => {
-    const fileStructure = getWorkspaceSummary();
-    const fileContext = getRelevantFileContext(userMsg);
-
-    const prompt = `
-You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
-
---- PROTOCOLS ---
-
-1. LANGUAGE ADAPTATION (CRITICAL): 
-   - Detect the language used by the user in the prompt below.
-   - If user writes in PORTUGUESE -> Respond in PORTUGUESE.
-   - If user writes in ENGLISH -> Respond in ENGLISH.
-   - If user writes in SPANISH -> Respond in SPANISH.
-   - NEVER fail this check. Match the user's language 100%.
-
-2. AUTONOMY & TOOLS:
-   - You have FULL ACCESS to the file system.
-   - NEVER ask the user for file code. I have injected the relevant file contents below.
-   - NEVER say "I will update the file". JUST CALL THE TOOL \`write_file\`.
-   - To edit a file, you must rewrite the ENTIRE file content using \`write_file\`.
-
-3. NO CHAT CODE:
-   - Do NOT output code blocks (like \`\`\`js) in your text response.
-   - Code belongs ONLY inside the tool arguments.
-   - In the chat, just say "Criando arquivo X..." or "Atualizando estilo...".
-
-4. FILE SYSTEM STATE:
-   The current project structure is:
-   ${fileStructure}
-
-   ${fileContext ? `RELEVANT FILE CONTENTS (Use these to edit):${fileContext}` : ''}
-`;
-
-    // Limitar tamanho do system prompt para evitar estourar TPM
-    const MAX_SYSTEM_CHARS = 3000;
-    return prompt.length > MAX_SYSTEM_CHARS ? prompt.slice(0, MAX_SYSTEM_CHARS) : prompt;
-  };
-
-  const extractString = (args: Record<string, unknown>, key: string): string => {
-    const value = args[key];
-    return typeof value === 'string' ? value : '';
-  };
-
-  const executeWorkspaceTool = (toolName: string, rawArgs: unknown): Record<string, unknown> => {
-    const args = typeof rawArgs === 'object' && rawArgs !== null ? (rawArgs as Record<string, unknown>) : {};
-
-    try {
-      if (toolName === 'write_file') {
-        const path = extractString(args, 'path');
-        const content = extractString(args, 'content');
-        if (!path) return { error: 'Missing path argument.' };
-        const newId = createFileByPath(path, content);
-        return { status: 'success', message: `File ${path} written/updated. ID: ${newId}` };
-      }
-
-      if (toolName === 'read_file') {
-        const path = extractString(args, 'path');
-        if (!path) return { error: 'Missing path argument.' };
-        const file = getFileByPath(path);
-        return file ? { content: file.content || '' } : { error: 'File not found.' };
-      }
-
-      if (toolName === 'list_files') {
-        return { structure: getWorkspaceSummary() };
-      }
-
-      if (toolName === 'delete_file') {
-        const path = extractString(args, 'path');
-        if (!path) return { error: 'Missing path argument.' };
-        deleteFileByPath(path);
-        return { status: 'success' };
-      }
-
-      return { error: `Unknown tool: ${toolName}` };
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : 'Tool execution failed.';
-      return { error: message };
-    }
-  };
-
-  const runGeminiAgent = async (
-    userMsg: string,
-    providerKey: string,
-    dynamicSystemPrompt: string
-  ): Promise<void> => {
-    const ai = new GoogleGenAI({ apiKey: providerKey });
-    const model = 'gemini-2.5-flash';
-    const cleanHistory: Content[] = messages.slice(-10).map((message) => ({
-      role: message.role === 'user' ? 'user' : 'model',
-      parts: [{ text: message.content }]
-    }));
-
-    cleanHistory.push({ role: 'user', parts: [{ text: userMsg }] });
-
-    let turnCount = 0;
-    const MAX_TURNS = 15;
-
-    while (turnCount < MAX_TURNS) {
-      turnCount++;
-
-      const response = await ai.models.generateContent({
-        model,
-        contents: cleanHistory,
-        config: {
-          systemInstruction: dynamicSystemPrompt,
-          tools: [{ functionDeclarations: [writeFileTool, readFileTool, listFilesTool, deleteFileTool] }],
-          temperature: 0.1
-        }
-      });
-
-      const responseParts = response.candidates?.[0]?.content?.parts || [];
-      const responseText = responseParts
-        .filter((part): part is { text: string } => 'text' in part && typeof part.text === 'string')
-        .map((part) => part.text)
-        .join('\n');
-
-      const hasToolCalls = response.functionCalls && response.functionCalls.length > 0;
-      const hasCodeBlock = responseText.includes('```');
-
-      if (hasCodeBlock && !hasToolCalls) {
-        console.warn('GUARDRAIL: Intercepted code in chat.');
-        cleanHistory.push({ role: 'model', parts: [{ text: responseText }] });
-        cleanHistory.push({
-          role: 'user',
-          parts: [
-            {
-              text: "SYSTEM ERROR: You wrote code in the chat but DID NOT call the 'write_file' tool. I cannot save this code. CALL THE TOOL NOW with the content."
-            }
-          ]
-        });
-        continue;
-      }
-
-      if (responseText.trim()) {
-        addMessage({ role: 'model', content: responseText });
-      }
-
-      if (hasToolCalls) {
-        cleanHistory.push({
-          role: 'model',
-          parts: [
-            ...(responseText ? [{ text: responseText }] : []),
-            ...response.functionCalls!.map((functionCall) => ({ functionCall }))
-          ]
-        });
-
-        const functionResponses: Array<{
-          functionResponse: {
-            name: string;
-            response: Record<string, unknown>;
-            id?: string;
-          };
-        }> = [];
-
-        for (const functionCall of response.functionCalls!) {
-          addNotification('info', `Agent (${providerInfo.label}): ${functionCall.name}...`);
-          const toolResult = executeWorkspaceTool(functionCall.name, functionCall.args);
-
-          functionResponses.push({
-            functionResponse: {
-              name: functionCall.name,
-              response: toolResult,
-              id: functionCall.id
-            }
-          });
-        }
-
-        cleanHistory.push({ role: 'user', parts: functionResponses });
-        continue;
-      }
-
-      break;
-    }
-  };
-
-  const runOpenAIAgent = async (
-    provider: Exclude<AIProvider, 'gemini'>,
-    userMsg: string,
-    providerKey: string,
-    dynamicSystemPrompt: string
-  ): Promise<void> => {
-    const baseURL = provider === 'groq' ? 'https://api.groq.com/openai/v1' : 'https://api.llm7.io/v1';
-    // Para Groq, use um modelo mais leve (fast) para reduzir tokens
-    const model = provider === 'groq' ? GROQ_MODELS.fast : LLM7_MODELS.smart;
-
-    const client = new OpenAI({
-      apiKey: providerKey,
-      baseURL,
-      dangerouslyAllowBrowser: true
-    });
-
-    const MAX_HISTORY_MESSAGES = 3;
-    const MAX_MESSAGE_CHARS = 1000;
-
-    const history: ChatCompletionMessageParam[] = messages.slice(-MAX_HISTORY_MESSAGES).map((message) => ({
-      role: message.role === 'user' ? 'user' : 'assistant',
-      content: message.content.slice(0, MAX_MESSAGE_CHARS)
-    }));
-
-    const trimmedUserMsg = userMsg.slice(0, MAX_MESSAGE_CHARS);
-
-    const loopMessages: ChatCompletionMessageParam[] = [
-      { role: 'system', content: dynamicSystemPrompt },
-      ...history,
-      { role: 'user', content: trimmedUserMsg }
-    ];
-
-    let turnCount = 0;
-    const MAX_TURNS = 8;
-
-    while (turnCount < MAX_TURNS) {
-      turnCount++;
-
-      const completion = await client.chat.completions.create({
-        model,
-        messages: loopMessages,
-        tools: OPENAI_TOOLS,
-        tool_choice: 'auto',
-        temperature: 0.1
-      });
-
-      const assistantMessage = completion.choices[0]?.message;
-      if (!assistantMessage) break;
-
-      const responseText =
-        typeof assistantMessage.content === 'string'
-          ? assistantMessage.content
-          : '';
-
-      if (responseText.trim()) {
-        addMessage({ role: 'model', content: responseText });
-      }
-
-      loopMessages.push(assistantMessage as ChatCompletionMessageParam);
-
-      const toolCalls = assistantMessage.tool_calls || [];
-      if (!toolCalls.length) {
-        break;
-      }
-
-      for (const toolCall of toolCalls) {
-        if (toolCall.type !== 'function') {
-          continue;
-        }
-
-        addNotification('info', `Agent (${providerInfo.label}): ${toolCall.function.name}...`);
-
-        let parsedArgs: unknown = {};
-        try {
-          parsedArgs = toolCall.function.arguments ? JSON.parse(toolCall.function.arguments) : {};
-        } catch (error: unknown) {
-          console.error('Tool argument parse error', error);
-        }
-
-        const toolResult = executeWorkspaceTool(toolCall.function.name, parsedArgs);
-
-        loopMessages.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(toolResult)
-        });
-      }
-    }
-  };
-
-  // --- MAIN HANDLER ---
   const handleSend = async (manualMessage?: string) => {
     const userMsg = typeof manualMessage === 'string' ? manualMessage : input;
     if (!userMsg.trim() || isLoading || !activeApiKey) return;
@@ -516,7 +96,11 @@ You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
 
     try {
       const skillContext: ChatContext = {
-        runTerminalCommand: (command: string) => emitTerminalSendCommand(`${command}\r`),
+        runTerminalCommand: (command: string) => {
+          const terminalState = useTerminalStore.getState();
+          const terminalId = terminalState.activeSessionId || terminalState.ensureSession();
+          emitTerminalSendCommand({ terminalId, command: `${command}\r` });
+        },
         getActiveFilePath: () => {
           if (!activeTabId) return null;
           return useWorkspaceStore.getState().getPathForId(activeTabId) || null;
@@ -527,22 +111,32 @@ You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
       if (skill) {
         addNotification('info', `Skill ativada: ${skill.name}`);
         const skillResponse = await skill.onTrigger(userMsg, skillContext);
-
-        if (skillResponse) {
-          addMessage({ role: 'model', content: skillResponse });
-        } else {
-          addMessage({ role: 'model', content: `Skill ${skill.name} executada.` });
-        }
+        addMessage({ role: 'model', content: skillResponse || `Skill ${skill.name} executada.` });
         return;
       }
 
-      const dynamicSystemPrompt = buildDynamicSystemPrompt(userMsg);
-
-      if (preferredProvider === 'gemini') {
-        await runGeminiAgent(userMsg, activeApiKey, dynamicSystemPrompt);
-      } else {
-        await runOpenAIAgent(preferredProvider, userMsg, activeApiKey, dynamicSystemPrompt);
-      }
+      await runChatAgent({
+        provider: preferredProvider,
+        apiKey: activeApiKey,
+        userMessage: userMsg,
+        history: messages.map((message) => ({
+          role: message.role === 'user' ? 'user' : 'model',
+          content: message.content
+        })),
+        workspace: {
+          files,
+          activeTabId,
+          createFileByPath,
+          deleteFileByPath,
+          getFileByPath
+        },
+        onAssistantMessage: (content) => {
+          addMessage({ role: 'model', content });
+        },
+        onToolActivity: (toolName) => {
+          addNotification('info', `Agent (${providerInfo.label}): ${toolName}...`);
+        }
+      });
     } catch (error: unknown) {
       console.error('Agent Error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown error.';
@@ -570,7 +164,6 @@ You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
     addNotification('success', `API Key (${providerInfo.label}) salva!`);
   };
 
-  // --- RENDER ---
   if (!activeApiKey) {
     return (
       <div className="flex flex-col h-full bg-ide-sidebar p-6 text-ide-text border-l border-ide-border">
@@ -631,7 +224,6 @@ You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
 
   return (
     <div className="flex flex-col h-full bg-ide-sidebar text-ide-text text-sm overflow-hidden border-l border-ide-border">
-      {/* Header */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-ide-activity bg-ide-sidebar space-y-2">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -674,7 +266,6 @@ You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
         </div>
       </div>
 
-      {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 scroll-smooth" ref={scrollRef}>
         {messages.map((message) => (
           <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -706,7 +297,6 @@ You are Capy, an expert Senior Software Engineer embedded in a Web IDE.
         )}
       </div>
 
-      {/* Input */}
       <div className="p-4 bg-ide-sidebar border-t border-ide-activity">
         <div className="relative group bg-ide-input rounded-xl border border-white/10 p-2 transition-all focus-within:border-ide-accent/50 focus-within:shadow-[0_0_15px_rgba(139,92,246,0.1)]">
           <textarea

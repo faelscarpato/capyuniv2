@@ -14,6 +14,7 @@ interface TerminalState {
   sessions: TerminalSession[];
   setServerMode: (mode: TerminalServerMode) => void;
   addSession: (title?: string) => string;
+  ensureSession: () => string;
   removeSession: (id: string) => void;
   setActiveSession: (id: string) => void;
   setSessionMode: (id: string, mode: TerminalMode) => void;
@@ -27,10 +28,12 @@ const createSession = (title = 'Terminal'): TerminalSession => ({
   mode: 'simulated'
 });
 
+const firstSession = createSession('Terminal');
+
 export const useTerminalStore = create<TerminalState>((set, get) => ({
   serverMode: 'dev',
-  activeSessionId: null,
-  sessions: [],
+  activeSessionId: firstSession.id,
+  sessions: [firstSession],
   setServerMode: (mode) => set({ serverMode: mode }),
   addSession: (title) => {
     const session = createSession(title);
@@ -40,8 +43,18 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
     }));
     return session.id;
   },
+  ensureSession: () => {
+    const state = get();
+    if (state.activeSessionId) return state.activeSessionId;
+    if (state.sessions[0]) {
+      set({ activeSessionId: state.sessions[0].id });
+      return state.sessions[0].id;
+    }
+    return state.addSession('Terminal');
+  },
   removeSession: (id) =>
     set((state) => {
+      if (state.sessions.length <= 1) return state;
       const sessions = state.sessions.filter((session) => session.id !== id);
       return {
         sessions,
@@ -58,4 +71,3 @@ export const useTerminalStore = create<TerminalState>((set, get) => ({
       sessions: state.sessions.map((session) => (session.id === id ? { ...session, cwd } : session))
     }))
 }));
-

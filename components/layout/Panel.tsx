@@ -1,16 +1,24 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useRef } from 'react';
 import { useUIStore } from '../../stores/uiStore';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { TerminalView } from '../terminal/TerminalView';
-import { WebPreview } from '../preview/WebPreview';
 import { Icon } from '../ui/Icon';
+import { useTerminalStore } from '../../core/terminal/store/terminalStore';
+
+const WebPreview = lazy(() => import('../preview/WebPreview').then((mod) => ({ default: mod.WebPreview })));
 
 export const Panel: React.FC = () => {
     const {
         isPanelOpen, setPanelOpen, activePanelTab, setActivePanelTab,
-        consoleOutput, clearConsole, markers, panelHeight, setPanelHeight,
-        terminals, addTerminal, removeTerminal, activeTerminalId, setActiveTerminalId
+        consoleOutput, clearConsole, markers, panelHeight, setPanelHeight
     } = useUIStore();
+    const {
+        sessions,
+        activeSessionId,
+        addSession,
+        removeSession,
+        setActiveSession
+    } = useTerminalStore();
     const { requestScrollToLine, activeTabId } = useWorkspaceStore();
 
     const [isResizing, setIsResizing] = useState(false);
@@ -126,20 +134,20 @@ export const Panel: React.FC = () => {
             <div className={`flex flex-col flex-1 overflow-hidden h-full ${activePanelTab === 'TERMINAL' ? 'flex' : 'hidden'}`}>
                 {/* Terminal Sub-Bar */}
                 <div className="flex items-center gap-2 px-6 h-10 border-b border-ide-border/30 bg-ide-panel/30 overflow-x-auto no-scrollbar flex-shrink-0">
-                    {terminals.map(term => (
+                    {sessions.map((term, index) => (
                         <div
                             key={term.id}
                             className={`
                                 group flex items-center gap-3 px-3 py-1 rounded-lg cursor-pointer transition-all text-[11px] font-semibold
-                                ${activeTerminalId === term.id ? 'bg-ide-accent/15 text-ide-accent border border-ide-accent/20' : 'text-ide-muted hover:bg-ide-hover hover:text-white'}
+                                ${activeSessionId === term.id ? 'bg-ide-accent/15 text-ide-accent border border-ide-accent/20' : 'text-ide-muted hover:bg-ide-hover hover:text-white'}
                             `}
-                            onClick={() => setActiveTerminalId(term.id)}
+                            onClick={() => setActiveSession(term.id)}
                         >
                             <Icon name="Terminal" size={12} />
                             <span className="truncate max-w-[100px]">{term.title}</span>
                             <button
                                 type="button"
-                                onClick={(e) => { e.stopPropagation(); removeTerminal(term.id); }}
+                                onClick={(e) => { e.stopPropagation(); removeSession(term.id); }}
                                 className="opacity-0 group-hover:opacity-100 hover:text-red-400 transition-opacity"
                             >
                                 <Icon name="X" size={10} />
@@ -148,7 +156,7 @@ export const Panel: React.FC = () => {
                     ))}
                     <button
                         type="button"
-                        onClick={addTerminal}
+                        onClick={() => addSession(`Terminal ${sessions.length + 1}`)}
                         className="px-2 py-1 text-ide-muted hover:text-white transition-colors"
                         title="New Terminal"
                     >
@@ -158,10 +166,10 @@ export const Panel: React.FC = () => {
 
                 {/* Render Terminals */}
                 <div className="flex-1 overflow-hidden relative">
-                    {terminals.map(term => (
+                    {sessions.map((term) => (
                         <div
                             key={term.id}
-                            className={`h-full w-full ${activeTerminalId === term.id ? 'block' : 'hidden'}`}
+                            className={`h-full w-full ${activeSessionId === term.id ? 'block' : 'hidden'}`}
                         >
                             <TerminalView key={term.id} terminalId={term.id} />
                         </div>
@@ -169,7 +177,11 @@ export const Panel: React.FC = () => {
                 </div>
             </div>
 
-            {activePanelTab === 'PREVIEW' && <WebPreview />}
+            {activePanelTab === 'PREVIEW' && (
+                <Suspense fallback={<div className="h-full w-full animate-pulse bg-ide-panel/70" />}>
+                    <WebPreview />
+                </Suspense>
+            )}
 
             {activePanelTab === 'OUTPUT' && (
                 <div className="flex flex-col h-full">
