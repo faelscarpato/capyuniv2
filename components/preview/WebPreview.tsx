@@ -3,6 +3,8 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { useUIStore } from '../../stores/uiStore';
 import { FileNode } from '../../types';
 import { Icon } from '../ui/Icon';
+import { useRuntimeModeStore } from '../../features/local-runtime/store/runtimeModeStore';
+import { useLocalPreviewStore } from '../../features/local-runtime/store/localPreviewStore';
 
 const REACT_VERSION = '19.2.3';
 const LUCIDE_VERSION = '0.562.0';
@@ -10,12 +12,22 @@ const ENTRY_PRIORITY = ['src/main.tsx', 'src/index.tsx', 'index.tsx'];
 
 export const WebPreview: React.FC = () => {
   const { files } = useWorkspaceStore();
-  const { addConsoleLog, previewFileId } = useUIStore();
+  const { addConsoleLog, previewFileId, language } = useUIStore();
+  const { mode } = useRuntimeModeStore();
+  const { detectedUrls, activeUrl, setActiveUrl, registerDetectedUrls } = useLocalPreviewStore();
   const [srcDoc, setSrcDoc] = useState('');
   const [currentPreviewName, setCurrentPreviewName] = useState('Initializing...');
+  const [manualLocalUrl, setManualLocalUrl] = useState('');
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const tt = (pt: string, en: string) => (language === 'pt' ? pt : en);
 
   useEffect(() => {
+    if (mode !== 'local-runtime') return;
+    if (activeUrl) setManualLocalUrl(activeUrl);
+  }, [mode, activeUrl]);
+
+  useEffect(() => {
+    if (mode === 'local-runtime') return;
     const handleMessage = (event: MessageEvent) => {
       if (!event.data) return;
 
@@ -28,7 +40,7 @@ export const WebPreview: React.FC = () => {
 
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [addConsoleLog]);
+  }, [addConsoleLog, mode]);
 
   const getFullPath = (node: FileNode): string => {
     const stateFiles = useWorkspaceStore.getState().files;
@@ -317,10 +329,95 @@ window.addEventListener('unhandledrejection', function(event) {
   }, [files, previewFileId]);
 
   const openInNewTab = () => {
+    if (mode === 'local-runtime') {
+      if (activeUrl) window.open(activeUrl, '_blank');
+      return;
+    }
     const blob = new Blob([srcDoc], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
   };
+
+  if (mode === 'local-runtime') {
+    return (
+      <div className="flex flex-col h-full bg-white">
+        <div className="h-8 bg-gray-100 border-b border-gray-300 flex items-center px-2 justify-between flex-shrink-0 select-none">
+          <div className="flex items-center gap-2 text-xs text-gray-600">
+            <Icon name="Cpu" size={14} />
+            <span className="font-semibold text-green-700">{tt('PREVIEW RUNTIME LOCAL', 'LOCAL RUNTIME PREVIEW')}</span>
+          </div>
+          <button
+            onClick={openInNewTab}
+            disabled={!activeUrl}
+            className="text-gray-500 hover:text-gray-900 disabled:opacity-40 flex items-center gap-1 text-xs px-1 py-0.5 rounded hover:bg-gray-200"
+          >
+            <Icon name="ExternalLink" size={12} /> {tt('Abrir', 'Open')}
+          </button>
+        </div>
+
+        <div className="p-2 border-b border-gray-300 bg-gray-50 flex flex-col gap-2">
+          {detectedUrls.length > 0 && (
+            <div className="flex items-center gap-2 flex-wrap">
+              {detectedUrls.map((url) => (
+                <button
+                  key={url}
+                  type="button"
+                  onClick={() => setActiveUrl(url)}
+                  className={`px-2 py-1 rounded text-[11px] border transition-colors ${
+                    activeUrl === url
+                      ? 'bg-blue-600 text-white border-blue-700'
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                  }`}
+                >
+                  {url}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={manualLocalUrl}
+              onChange={(event) => setManualLocalUrl(event.target.value)}
+              placeholder="http://localhost:3000"
+              className="flex-1 rounded border border-gray-300 px-2 py-1 text-xs text-gray-700"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const value = manualLocalUrl.trim();
+                if (!value) return;
+                registerDetectedUrls([value]);
+                setActiveUrl(value);
+              }}
+              className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-700 text-white text-xs"
+            >
+              {tt('Usar URL', 'Use URL')}
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 relative bg-white overflow-hidden">
+          {activeUrl ? (
+            <iframe
+              title="local-runtime-preview"
+              src={activeUrl}
+              className="w-full h-full border-none"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-popups"
+            />
+          ) : (
+            <div className="h-full w-full flex items-center justify-center text-sm text-gray-600 bg-gray-50 px-6 text-center">
+              {tt(
+                'Inicie seu servidor local no Modo Runtime Local (por exemplo `npm run dev`). URLs localhost detectadas aparecerão aqui.',
+                'Start your local dev server in Local Runtime Mode (for example `npm run dev`). Detected localhost URLs will appear here.'
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-white">
@@ -333,9 +430,9 @@ window.addEventListener('unhandledrejection', function(event) {
         </div>
         <div className="flex items-center gap-2">
           <button onClick={openInNewTab} className="text-gray-500 hover:text-gray-900 flex items-center gap-1 text-xs px-1 py-0.5 rounded hover:bg-gray-200">
-            <Icon name="ExternalLink" size={12} /> Open
+            <Icon name="ExternalLink" size={12} /> {tt('Abrir', 'Open')}
           </button>
-          <button onClick={generatePreview} className="text-gray-500 hover:text-gray-900 px-1 py-0.5 rounded hover:bg-gray-200" title="Force Reload">
+          <button onClick={generatePreview} className="text-gray-500 hover:text-gray-900 px-1 py-0.5 rounded hover:bg-gray-200" title={tt('Forçar recarregamento', 'Force Reload')}>
             <Icon name="RefreshCw" size={12} />
           </button>
         </div>

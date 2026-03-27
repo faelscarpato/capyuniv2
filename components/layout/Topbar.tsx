@@ -122,6 +122,8 @@ export const Topbar: React.FC = () => {
     ],
     [t('run', language)]: [
       { label: t('startPreview', language), action: () => runCommandAndClose('panel.openPreview'), shortcut: 'F5' },
+      { label: language === 'pt' ? 'Ativar Runtime Local' : 'Activate Local Runtime', action: () => runCommandAndClose('runtime.activateLocal'), icon: 'Terminal' },
+      { label: language === 'pt' ? 'Desconectar Runtime Local' : 'Disconnect Local Runtime', action: () => runCommandAndClose('runtime.disconnect'), icon: 'XCircle' },
     ],
     [t('help', language)]: [
       { label: t('welcome', language), action: handleWelcomeReload, icon: 'RefreshCcw' },

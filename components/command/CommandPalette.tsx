@@ -8,7 +8,8 @@ import { useNotificationStore } from '../../stores/notificationStore';
 import { executePaletteCommand } from '../../core/commands/handlers/registerDefaultCommands';
 
 export const CommandPalette: React.FC = () => {
-  const { isCommandPaletteOpen, setCommandPalette, setTheme } = useUIStore();
+  const { isCommandPaletteOpen, setCommandPalette, setTheme, language } = useUIStore();
+  const tt = (pt: string, en: string) => (language === 'pt' ? pt : en);
   
   const { importWorkspaceData } = useWorkspaceStore();
   const { addNotification } = useNotificationStore();
@@ -60,6 +61,9 @@ export const CommandPalette: React.FC = () => {
     { label: 'Workspace: New Folder', action: () => executePaletteCommand('workspace.createFolder'), icon: 'FolderPlus' },
     { label: 'Workspace: Export Zip', action: () => executePaletteCommand('workspace.exportZip'), icon: 'Download' },
     { label: 'Workspace: Import Zip', action: () => fileInputRef.current?.click(), icon: 'Upload' },
+    { label: tt('Runtime: Ativar Runtime Local', 'Runtime: Activate Local Runtime'), action: () => executePaletteCommand('runtime.activateLocal'), icon: 'Terminal' },
+    { label: tt('Runtime: Desconectar Runtime Local', 'Runtime: Disconnect Local Runtime'), action: () => executePaletteCommand('runtime.disconnect'), icon: 'XCircle' },
+    { label: tt('Controle de Código-Fonte: Atualizar', 'Source Control: Refresh'), action: () => executePaletteCommand('sourceControl.refresh'), icon: 'RefreshCw' },
   ];
 
   const filtered = commands.filter(c => c.label.toLowerCase().includes(query.toLowerCase()));
@@ -104,7 +108,7 @@ export const CommandPalette: React.FC = () => {
             <input
                 ref={inputRef}
                 className="flex-1 bg-transparent text-white px-1 py-2 focus:outline-none placeholder-gray-500"
-                placeholder="Type a command..."
+                placeholder={tt('Digite um comando...', 'Type a command...')}
                 value={query}
                 onChange={e => { setQuery(e.target.value); setActiveIndex(0); }}
                 onKeyDown={handleKeyDown}
@@ -123,7 +127,7 @@ export const CommandPalette: React.FC = () => {
                 </div>
             ))}
             {filtered.length === 0 && (
-                <div className="p-4 text-center text-gray-500 text-sm">No matching commands</div>
+                <div className="p-4 text-center text-gray-500 text-sm">{tt('Nenhum comando encontrado', 'No matching commands')}</div>
             )}
         </div>
       </div>

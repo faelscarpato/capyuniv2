@@ -7,10 +7,30 @@ import { useUIStore } from '../../stores/uiStore';
 import { useOnboardingStore } from '../../features/onboarding/store/onboardingStore';
 import { TerminalTransport } from '../../core/terminal/services/terminalTransport';
 import { useTerminalStore } from '../../core/terminal/store/terminalStore';
+import { useRuntimeModeStore } from '../../features/local-runtime/store/runtimeModeStore';
+import { useLocalRuntimeStore } from '../../features/local-runtime/store/localRuntimeStore';
+import { localRuntimeAdapter } from '../../features/local-runtime/adapters/LocalRuntimeAdapter';
 
 type TerminalMode = 'real' | 'simulated';
+const PTY_WS_URL = (import.meta as any).env?.VITE_PTY_WS_URL || `ws://${window.location.hostname || '127.0.0.1'}:8787/pty`;
+const SIMULATED_COMMANDS = new Set(['help', 'ls', 'cd', 'pwd', 'cat', 'touch', 'mkdir', 'rm', 'echo', 'clear']);
+const LOCAL_RUNTIME_COMMANDS = new Set([
+  'node',
+  'npm',
+  'pnpm',
+  'yarn',
+  'npx',
+  'git',
+  'vite',
+  'next',
+  'python',
+  'pip',
+  'bash',
+  'sh',
+  'pwsh',
+  'powershell'
+]);
 
-const ws = new WebSocket('wss://capyuniv2.pages.dev:8787/pty');
 
 interface TerminalViewProps {
   terminalId: string;
@@ -21,13 +41,16 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
   const xtermRef = useRef<Terminal | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const commandRef = useRef('');
+  const realCommandRef = useRef('');
   const transportRef = useRef<TerminalTransport | null>(null);
   const modeRef = useRef<TerminalMode>('simulated');
   const hasTrackedUsageRef = useRef(false);
 
-  const { currentTheme, isPanelOpen } = useUIStore();
+  const { currentTheme, isPanelOpen, language } = useUIStore();
   const { markTerminalUsed } = useOnboardingStore();
   const { setSessionMode, setSessionCwd } = useTerminalStore();
+  const { mode } = useRuntimeModeStore();
+  const tt = (pt: string, en: string) => (language === 'pt' ? pt : en);
 
   const getXtermTheme = (themeId: string) => {
     if (themeId === 'midnight-pro') {
@@ -73,6 +96,59 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
     };
   };
 
+  const normalizeShellCommand = (raw: string): string => raw.trim().replace(/\s+/g, ' ');
+
+  const shouldRequireLocalRuntime = (raw: string): boolean => {
+    const normalized = normalizeShellCommand(raw);
+    if (!normalized) return false;
+    const token = (normalized.split(' ')[0] || '').toLowerCase();
+    if (SIMULATED_COMMANDS.has(token)) return false;
+    if (LOCAL_RUNTIME_COMMANDS.has(token)) return true;
+    return !SIMULATED_COMMANDS.has(token);
+  };
+
+  const requestLocalRuntimeActivationForCommand = (command: string, term: Terminal) => {
+    const cleaned = normalizeShellCommand(command);
+    if (!cleaned) return;
+
+    useRuntimeModeStore.getState().ensureLocalRuntime({
+      requestedBy: 'Terminal',
+      actionLabel: tt(`Executar comando local: ${cleaned}`, `Run local command: ${cleaned}`),
+      onActivated: () => {
+        let tries = 0;
+        const sendWhenReady = () => {
+          const runtimeState = useLocalRuntimeStore.getState();
+          if (runtimeState.bridgeStatus === 'connected') {
+            localRuntimeAdapter.runCommand(terminalId, cleaned);
+            return;
+          }
+          if (runtimeState.bridgeStatus === 'connecting' && tries < 12) {
+            tries += 1;
+            window.setTimeout(sendWhenReady, 250);
+            return;
+          }
+          useRuntimeModeStore
+            .getState()
+            .appendBridgeLog(
+              tt(
+                `Não foi possível enviar o comando "${cleaned}" porque a ponte do runtime local não estava conectada.`,
+                `Could not dispatch command "${cleaned}" because local runtime bridge was not connected.`
+              )
+            );
+        };
+        sendWhenReady();
+      }
+    });
+
+    term.writeln(
+      `\r\n[Capy Runtime] ${tt(
+        'Ative o Runtime Local para executar este comando no seu ambiente local real.',
+        'Activate Local Runtime to run this command in your real local environment.'
+      )}`
+    );
+    prompt(term);
+  };
+
   const safeFit = () => {
     if (!terminalRef.current || terminalRef.current.clientHeight < 10 || terminalRef.current.clientWidth < 10) {
       return;
@@ -111,9 +187,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
     setSessionMode(terminalId, mode);
 
     if (mode === 'real') {
-      term.writeln(`\r\n\x1b[1;32m[Capy PTY]\x1b[0m Connected to instance ${terminalId}`);
+      useLocalRuntimeStore.getState().markSessionConnected(terminalId);
+      useRuntimeModeStore.getState().setAvailability('available');
+      term.writeln(`\r\n\x1b[1;32m[Capy PTY]\x1b[0m ${tt('Conectado à instância', 'Connected to instance')} ${terminalId}`);
     } else {
-      term.writeln('\r\n\x1b[1;33m[Capy Terminal]\x1b[0m Using simulated fallback.');
+      useLocalRuntimeStore.getState().markSessionDisconnected(terminalId);
+      term.writeln(`\r\n\x1b[1;33m[Capy Terminal]\x1b[0m ${tt('Usando fallback simulado.', 'Using simulated fallback.')}`);
       prompt(term);
     }
   };
@@ -121,23 +200,36 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
   const tryConnectRealTerminal = (term: Terminal) => {
     let resolved = false;
     let fallbackTimer: number | null = null;
-    const announceFallback = () => {
+    const announceFallback = (reason: string) => {
       if (modeRef.current === 'simulated') {
-        term.writeln('\r\n[Capy Terminal] Real terminal unavailable. Using simulated fallback.');
+        term.writeln(
+          `\r\n[Capy Runtime] ${tt(
+            'Ponte do runtime local indisponível. Mantendo modo simulado.',
+            'Local runtime bridge unavailable. Staying in simulated mode.'
+          )}`
+        );
         return;
       }
+      useRuntimeModeStore.getState().setAvailability('unavailable');
+      useRuntimeModeStore.getState().appendBridgeLog(reason);
       setMode(term, 'simulated');
     };
 
     try {
       const transport = new TerminalTransport();
       transportRef.current = transport;
+      useLocalRuntimeStore.getState().setBridgeStatus('connecting');
 
       fallbackTimer = window.setTimeout(() => {
         if (resolved) return;
         resolved = true;
         transport.disconnect();
-        announceFallback();
+        announceFallback(
+          tt(
+            'Tempo esgotado ao conectar na ponte do runtime local.',
+            'Timed out connecting to local runtime bridge.'
+          )
+        );
       }, 1200);
 
       transport.connect(PTY_WS_URL, {
@@ -146,38 +238,66 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
           resolved = true;
           if (fallbackTimer) window.clearTimeout(fallbackTimer);
 
+          useLocalRuntimeStore.getState().setBridgeStatus('connected');
           setMode(term, 'real');
+          transport.send({ type: 'setRuntimeMode', mode: 'local-runtime' });
           if (xtermRef.current) {
             transport.send({ type: 'resize', cols: xtermRef.current.cols, rows: xtermRef.current.rows });
           }
-      transport.send({ type: 'setCwd', cwd: getTerminalCwdPath(terminalId) });
+          const initialCwd = getTerminalCwdPath(terminalId);
+          if (initialCwd && initialCwd !== '/') {
+            transport.send({ type: 'setCwd', cwd: initialCwd });
+          }
         },
         onPtyData: (data) => {
           if (!xtermRef.current) return;
+          useLocalRuntimeStore.getState().consumeTerminalOutput(terminalId, data);
           xtermRef.current.write(data);
         },
         onClose: () => {
           if (!resolved) {
             resolved = true;
             if (fallbackTimer) window.clearTimeout(fallbackTimer);
-            announceFallback();
+            announceFallback(
+              tt(
+                'A ponte do runtime local foi fechada antes da ativação.',
+                'Local runtime bridge closed before activation.'
+              )
+            );
             return;
           }
 
           if (modeRef.current === 'real') {
+            useRuntimeModeStore
+              .getState()
+              .appendBridgeLog(tt('Conexão com a ponte do runtime local encerrada.', 'Local runtime bridge connection closed.'));
             setMode(term, 'simulated');
           }
         },
-        onError: () => {
+        onError: (message) => {
           if (!resolved) {
             resolved = true;
             if (fallbackTimer) window.clearTimeout(fallbackTimer);
-            announceFallback();
+            announceFallback(
+              message || tt('Falha de conexão com a ponte do runtime local.', 'Local runtime bridge connection failed.')
+            );
+          } else {
+            useRuntimeModeStore
+              .getState()
+              .appendBridgeLog(message || tt('Erro na ponte do runtime local.', 'Local runtime bridge error.'));
           }
+          useLocalRuntimeStore
+            .getState()
+            .setBridgeStatus('error', message || tt('Erro na ponte do runtime local.', 'Local runtime bridge error.'));
         }
       });
-    } catch {
-      announceFallback();
+    } catch (error) {
+      announceFallback(
+        error instanceof Error
+          ? error.message
+          : tt('Falha ao inicializar a ponte do runtime local.', 'Failed to initialize local runtime bridge.')
+      );
+      useLocalRuntimeStore.getState().setBridgeStatus('error', String(error));
     }
   };
 
@@ -194,6 +314,15 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
 
     const runSimulatedCommand = (rawCommand: string) => {
       const command = rawCommand.trim();
+      if (!command) {
+        if (term) prompt(term);
+        return;
+      }
+
+      if (mode === 'online' && shouldRequireLocalRuntime(command)) {
+        if (term) requestLocalRuntimeActivationForCommand(command, term);
+        return;
+      }
 
       if (command === 'clear') {
         term?.clear();
@@ -247,20 +376,34 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
         });
 
         term.writeln('\x1b[1;32mCapyUNI Terminal\x1b[0m v1.0');
-        term.writeln('\x1b[1;30mConnecting to backend...\x1b[0m');
+        if (mode === 'local-runtime') {
+          term.writeln(`\x1b[1;30m${tt('Conectando à ponte do runtime local...', 'Connecting to local runtime bridge...')}\x1b[0m`);
+          useLocalRuntimeStore.getState().ensureSession(terminalId, getTerminalCwdPath(terminalId));
+          useLocalRuntimeStore.getState().setActiveSession(terminalId);
+          tryConnectRealTerminal(term);
+        } else {
+          term.writeln(`\x1b[1;30m${tt('Modo Online IDE ativo (terminal simulado).', 'Online IDE Mode active (simulated terminal).')}\x1b[0m`);
+          setMode(term, 'simulated');
+        }
         prompt(term);
-
-        tryConnectRealTerminal(term);
 
         unsubscribeCommand = onTerminalSendCommand((event) => {
           const targetTerminalId = event.terminalId;
           if (targetTerminalId && targetTerminalId !== terminalId) return;
           const cmd = event.command;
+          const sanitized = cmd.replace(/\r$/, '');
+
+          if (mode === 'online' && shouldRequireLocalRuntime(sanitized)) {
+            if (term) requestLocalRuntimeActivationForCommand(sanitized, term);
+            return;
+          }
 
           if (modeRef.current === 'real' && transportRef.current?.isConnected()) {
             transportRef.current.send({ type: 'input', data: cmd });
+            if (sanitized.trim()) {
+              useLocalRuntimeStore.getState().recordCommand(terminalId, sanitized);
+            }
           } else if (modeRef.current === 'simulated' && term) {
-            const sanitized = cmd.replace(/\r$/, '');
             term.write(sanitized);
             term.write('\r\n');
             runSimulatedCommand(sanitized);
@@ -276,6 +419,18 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
           if (modeRef.current === 'real') {
             if (transportRef.current?.isConnected()) {
               transportRef.current.send({ type: 'input', data });
+            }
+
+            if (data === '\r') {
+              const entered = realCommandRef.current.trim();
+              realCommandRef.current = '';
+              if (entered) {
+                useLocalRuntimeStore.getState().recordCommand(terminalId, entered);
+              }
+            } else if (data === '\u007f') {
+              realCommandRef.current = realCommandRef.current.slice(0, -1);
+            } else if (data >= ' ') {
+              realCommandRef.current += data;
             }
             return;
           }
@@ -315,7 +470,8 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
           const cwd = event.cwd;
 
           setSessionCwd(terminalId, cwd);
-          if (transportRef.current?.isConnected() && modeRef.current === 'real') {
+          useLocalRuntimeStore.getState().setSessionCwd(terminalId, cwd);
+          if (transportRef.current?.isConnected() && modeRef.current === 'real' && cwd !== '/') {
             transportRef.current.send({ type: 'setCwd', cwd });
           }
         });
@@ -347,11 +503,12 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
       resizeObserver?.disconnect();
       transportRef.current?.disconnect();
       transportRef.current = null;
+      useLocalRuntimeStore.getState().markSessionDisconnected(terminalId);
       term?.dispose();
       xtermRef.current = null;
       fitAddonRef.current = null;
     };
-  }, []);
+  }, [mode, terminalId]);
 
   useEffect(() => {
     if (xtermRef.current) {

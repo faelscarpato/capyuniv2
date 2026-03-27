@@ -4,6 +4,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { TerminalView } from '../terminal/TerminalView';
 import { Icon } from '../ui/Icon';
 import { useTerminalStore } from '../../core/terminal/store/terminalStore';
+import { useLocalRuntimeStore } from '../../features/local-runtime/store/localRuntimeStore';
 
 const WebPreview = lazy(() => import('../preview/WebPreview').then((mod) => ({ default: mod.WebPreview })));
 
@@ -19,6 +20,7 @@ export const Panel: React.FC = () => {
         removeSession,
         setActiveSession
     } = useTerminalStore();
+    const { setActiveSession: setActiveLocalRuntimeSession, ensureSession: ensureLocalRuntimeSession } = useLocalRuntimeStore();
     const { requestScrollToLine, activeTabId } = useWorkspaceStore();
 
     const [isResizing, setIsResizing] = useState(false);
@@ -141,7 +143,10 @@ export const Panel: React.FC = () => {
                                 group flex items-center gap-3 px-3 py-1 rounded-lg cursor-pointer transition-all text-[11px] font-semibold
                                 ${activeSessionId === term.id ? 'bg-ide-accent/15 text-ide-accent border border-ide-accent/20' : 'text-ide-muted hover:bg-ide-hover hover:text-white'}
                             `}
-                            onClick={() => setActiveSession(term.id)}
+                            onClick={() => {
+                                setActiveSession(term.id);
+                                setActiveLocalRuntimeSession(term.id);
+                            }}
                         >
                             <Icon name="Terminal" size={12} />
                             <span className="truncate max-w-[100px]">{term.title}</span>
@@ -156,7 +161,11 @@ export const Panel: React.FC = () => {
                     ))}
                     <button
                         type="button"
-                        onClick={() => addSession(`Terminal ${sessions.length + 1}`)}
+                        onClick={() => {
+                            const id = addSession(`Terminal ${sessions.length + 1}`);
+                            ensureLocalRuntimeSession(id, '/');
+                            setActiveLocalRuntimeSession(id);
+                        }}
                         className="px-2 py-1 text-ide-muted hover:text-white transition-colors"
                         title="New Terminal"
                     >

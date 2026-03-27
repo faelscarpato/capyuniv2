@@ -4,6 +4,7 @@ import { Icon } from '../ui/Icon';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { getFileIconInfo } from '../../lib/fileUtils';
 import { executeContextCommand } from '../../core/commands/handlers/registerDefaultCommands';
+import { useSourceControlStore } from '../../features/source-control/store/sourceControlStore';
 
 interface Props {
   node: FileNode;
@@ -13,14 +14,29 @@ interface Props {
 
 export const FileNodeItem: React.FC<Props> = ({ node, depth, onContextMenu }) => {
   const {
-    expandedFolders, activeTabId
+    expandedFolders, activeTabId, files
   } = useWorkspaceStore();
+  const { entries } = useSourceControlStore();
 
   const [isDragOver, setIsDragOver] = useState(false);
 
   const isExpanded = expandedFolders.includes(node.id);
   const isActive = activeTabId === node.id;
   const isFolder = node.type === 'folder';
+  const gitBadge = (() => {
+    if (isFolder) return null;
+    let current = node;
+    const parts = [current.name];
+    while (current.parentId && current.parentId !== 'root') {
+      const parent = files[current.parentId];
+      if (!parent) break;
+      parts.unshift(parent.name);
+      current = parent;
+    }
+    const relativePath = parts.join('/').replace(/\\/g, '/');
+    const match = entries.find((entry) => entry.path.replace(/\\/g, '/') === relativePath);
+    return match?.badge || null;
+  })();
 
   // Determine icon
   const fileIconInfo = !isFolder ? getFileIconInfo(node.name) : null;
@@ -116,6 +132,11 @@ export const FileNodeItem: React.FC<Props> = ({ node, depth, onContextMenu }) =>
       </span>
 
       <span className="truncate">{node.name}</span>
+      {gitBadge && (
+        <span className="ml-auto text-[10px] font-black text-ide-accent bg-ide-accent/10 rounded px-1.5 py-0.5">
+          {gitBadge}
+        </span>
+      )}
     </div>
   );
 };

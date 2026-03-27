@@ -26,6 +26,9 @@ const WorkspaceActionDialogModal = lazy(() =>
 const ConfirmDialogModal = lazy(() =>
   import('../modals/ConfirmDialogModal').then((mod) => ({ default: mod.ConfirmDialogModal }))
 );
+const RuntimeModeModal = lazy(() =>
+  import('../modals/RuntimeModeModal').then((mod) => ({ default: mod.RuntimeModeModal }))
+);
 
 export const MainLayout: React.FC = () => {
     const {
@@ -211,6 +214,7 @@ export const MainLayout: React.FC = () => {
                 <ApiKeyModal />
                 <WorkspaceActionDialogModal />
                 <ConfirmDialogModal />
+                <RuntimeModeModal />
             </Suspense>
             <ToastContainer />
         </div>

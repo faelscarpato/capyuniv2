@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useUIStore, SidebarViewType } from '../../stores/uiStore';
 import { Icon } from '../ui/Icon';
 import { executeAppCommand } from '../../core/commands/handlers/registerDefaultCommands';
+import { useRuntimeModeStore } from '../../features/local-runtime/store/runtimeModeStore';
 
 export const ActivityBar: React.FC = () => {
   const {
@@ -10,8 +11,11 @@ export const ActivityBar: React.FC = () => {
     isPanelOpen, activePanelTab,
     isRightSidebarOpen,
     activeRightSidebarView, setRightSidebarOpen,
-    isMobile
+    isMobile,
+    language
   } = useUIStore();
+  const { mode } = useRuntimeModeStore();
+  const tt = (pt: string, en: string) => (language === 'pt' ? pt : en);
 
   const [showMobileMore, setShowMobileMore] = useState(false);
 
@@ -188,6 +192,19 @@ export const ActivityBar: React.FC = () => {
       >
         <div className={`p-2 rounded-xl transition-colors ${isPanelOpen && activePanelTab === 'TERMINAL' ? 'bg-ide-accent/10 text-ide-accent' : 'hover:bg-ide-hover'}`}>
           <Icon name="TerminalSquare" size={24} strokeWidth={isPanelOpen && activePanelTab === 'TERMINAL' ? 2 : 1.5} />
+        </div>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => executeAppCommand(mode === 'local-runtime' ? 'runtime.disconnect' : 'runtime.activateLocal')}
+        className={`w-full h-12 flex items-center justify-center transition-all active:scale-90 ${
+          mode === 'local-runtime' ? 'text-green-300 hover:text-green-200' : 'text-ide-muted hover:text-ide-text'
+        }`}
+        title={mode === 'local-runtime' ? tt('Desconectar Runtime Local', 'Disconnect Local Runtime') : tt('Ativar Runtime Local', 'Activate Local Runtime')}
+      >
+        <div className={`p-2 rounded-xl ${mode === 'local-runtime' ? 'bg-green-500/15' : 'hover:bg-ide-hover'}`}>
+          <Icon name="Cpu" size={22} strokeWidth={1.8} />
         </div>
       </button>
 
