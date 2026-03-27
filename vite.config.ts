@@ -8,7 +8,7 @@ export default defineConfig(({ mode }) => {
   return {
     server: {
       port: 3000,
-      host: 'capyuniv2.onrender.com',
+      host: '0.0.0.0',
       watch: {
         ignored: ['**/.workspace/**'],
         usePolling: true,
