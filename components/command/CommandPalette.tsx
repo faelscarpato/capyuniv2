@@ -64,6 +64,10 @@ export const CommandPalette: React.FC = () => {
     { label: tt('Runtime: Ativar Runtime Local', 'Runtime: Activate Local Runtime'), action: () => executePaletteCommand('runtime.activateLocal'), icon: 'Terminal' },
     { label: tt('Runtime: Desconectar Runtime Local', 'Runtime: Disconnect Local Runtime'), action: () => executePaletteCommand('runtime.disconnect'), icon: 'XCircle' },
     { label: tt('Controle de Código-Fonte: Atualizar', 'Source Control: Refresh'), action: () => executePaletteCommand('sourceControl.refresh'), icon: 'RefreshCw' },
+    
+    // Templates
+    { label: 'Template: React Basic', action: () => executePaletteCommand('templates.applyQuickStart', { templateId: 'react-basic' }), icon: 'Layout' },
+    { label: 'Template: Node CLI', action: () => executePaletteCommand('templates.applyQuickStart', { templateId: 'node-cli' }), icon: 'Terminal' },
   ];
 
   const filtered = commands.filter(c => c.label.toLowerCase().includes(query.toLowerCase()));

@@ -29,6 +29,15 @@ const ConfirmDialogModal = lazy(() =>
 const RuntimeModeModal = lazy(() =>
   import('../modals/RuntimeModeModal').then((mod) => ({ default: mod.RuntimeModeModal }))
 );
+const SnapshotsModal = lazy(() =>
+  import('../modals/SnapshotsModal').then((mod) => ({ default: mod.SnapshotsModal }))
+);
+const AuthModal = lazy(() =>
+  import('../modals/AuthModal').then((mod) => ({ default: mod.AuthModal }))
+);
+const SettingsModal = lazy(() =>
+  import('../modals/SettingsModal').then((mod) => ({ default: mod.SettingsModal }))
+);
 
 export const MainLayout: React.FC = () => {
     const {
@@ -215,6 +224,9 @@ export const MainLayout: React.FC = () => {
                 <WorkspaceActionDialogModal />
                 <ConfirmDialogModal />
                 <RuntimeModeModal />
+                <SnapshotsModal />
+                <AuthModal />
+                <SettingsModal />
             </Suspense>
             <ToastContainer />
         </div>

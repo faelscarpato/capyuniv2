@@ -9,6 +9,9 @@ import { useTerminalStore } from '../../terminal/store/terminalStore';
 import { setTerminalCwd } from '../../../lib/terminalEngine';
 import { emitTerminalSetCwd } from '../../../lib/terminalBridge';
 import { workspacePathService } from '../../workspace/services/workspacePathService';
+import { workspaceSnapshotService } from '../../workspace/services/workspaceSnapshotService';
+import { packageJsonService } from '../../workspace/services/packageJsonService';
+import { telemetry } from '../../../shared/telemetry';
 import { useRuntimeModeStore } from '../../../features/local-runtime/store/runtimeModeStore';
 import { useLocalRuntimeStore } from '../../../features/local-runtime/store/localRuntimeStore';
 import { useSourceControlStore } from '../../../features/source-control/store/sourceControlStore';
@@ -103,6 +106,10 @@ export const registerDefaultCommands = (): void => {
 
   commandRegistry.register('ui.openCommandPalette', () => {
     useUIStore.getState().setCommandPalette(true);
+  });
+
+  commandRegistry.register('ui.openSnapshots', () => {
+    useUIStore.getState().setSnapshotsOpen(true);
   });
 
   commandRegistry.register('workspace.createFile', () => {
@@ -228,6 +235,170 @@ export const registerDefaultCommands = (): void => {
 
   commandRegistry.register('workspace.save', () => {
     useWorkspaceStore.getState().saveAll();
+  });
+
+  commandRegistry.register('project.webPreview', () => {
+    const ui = useUIStore.getState();
+    const runtime = useRuntimeModeStore.getState();
+    
+    if (runtime.mode === 'local-runtime') {
+      useConfirmDialogStore.getState().open({
+        title: 'Modo Local Ativo',
+        description: 'Deseja usar Web Preview in-browser ou continuar com Runtime Local?',
+        confirmLabel: 'Web Preview',
+        onConfirm: () => {
+          runtime.setMode('online');
+          ui.setPanelOpen(true);
+          ui.setActivePanelTab('PREVIEW');
+          useNotificationStore.getState().addNotification('info', 'Web Preview aberto (in-browser)');
+        }
+      });
+      return;
+    }
+    
+    ui.setPanelOpen(true);
+    ui.setActivePanelTab('PREVIEW');
+    useNotificationStore.getState().addNotification('info', 'Web Preview aberto');
+  });
+
+  const KEYBOARD_SHORTCUTS = [
+    { keys: 'Ctrl+B', action: 'Toggle Sidebar' },
+    { keys: 'Ctrl+P', action: 'Quick Open File' },
+    { keys: 'Ctrl+Shift+P', action: 'Command Palette' },
+    { keys: 'Ctrl+`', action: 'Toggle Terminal' },
+    { keys: 'Ctrl+S', action: 'Save Workspace (Auto)' },
+    { keys: 'Ctrl+N', action: 'New File' },
+    { keys: 'Ctrl+Shift+N', action: 'New Folder' },
+    { keys: 'Ctrl+W', action: 'Close Tab' },
+    { keys: 'Ctrl+Tab', action: 'Next Tab' },
+    { keys: 'Ctrl+Shift+Tab', action: 'Previous Tab' },
+  ];
+
+  commandRegistry.register('ui.showKeyboardShortcuts', () => {
+    const shortcutsList = KEYBOARD_SHORTCUTS.map(s => `${s.keys} → ${s.action}`).join('\n');
+    useNotificationStore.getState().addNotification('info', `Atalhos: ${KEYBOARD_SHORTCUTS.length} disponiveis`);
+    useConfirmDialogStore.getState().open({
+      title: ' Atalhos de Teclado',
+      description: shortcutsList,
+      confirmLabel: 'Fechar',
+      onConfirm: () => {}
+    });
+  });
+
+  commandRegistry.register('auth.openLogin', () => {
+    useUIStore.getState().setAuthOpen(true);
+  });
+
+  commandRegistry.register('ui.openSettings', () => {
+    useUIStore.getState().setSettingsOpen(true);
+  });
+
+  commandRegistry.register('project.runDev', () => {
+    const ui = useUIStore.getState();
+    const runtime = useRuntimeModeStore.getState();
+    const workspace = useWorkspaceStore.getState();
+    
+    const scripts = packageJsonService.parseScripts(workspace.files);
+    const recommended = packageJsonService.getRecommendedScript(scripts);
+    
+    const handleRun = (command: string) => {
+      emitTerminalSendCommand({ command });
+      ui.setPanelOpen(true);
+      ui.setActivePanelTab(command.includes('dev') || command.includes('preview') ? 'PREVIEW' : 'TERMINAL');
+      useNotificationStore.getState().addNotification('info', `Executando ${command}...`);
+    };
+    
+    if (runtime.mode !== 'local-runtime') {
+      ui.setPanelOpen(true);
+      ui.setActivePanelTab('PREVIEW');
+      useNotificationStore.getState().addNotification('info', 'Web Preview aberto (modo in-browser). Clique em Run Project para ver opcoes.');
+      return;
+    }
+    
+    if (recommended) {
+      useNotificationStore.getState().addNotification('info', `Executando npm run ${recommended.name}...`);
+      handleRun(`npm run ${recommended.name}`);
+      telemetry.trackFeature('project_run', { script: recommended.name });
+    } else {
+      useNotificationStore.getState().addNotification('warning', 'Nenhum script npm encontrado no package.json');
+    }
+  });
+
+  commandRegistry.register('project.runTest', () => {
+    const ui = useUIStore.getState();
+    const runtime = useRuntimeModeStore.getState();
+    
+    if (runtime.mode !== 'local-runtime') {
+      useConfirmDialogStore.getState().open({
+        title: 'Modo Local Necessario',
+        description: 'Run Test requer o modo local-runtime. Deseja ativar?',
+        confirmLabel: 'Ativar',
+        onConfirm: () => {
+          runtime.setMode('local-runtime');
+          setTimeout(() => {
+            emitTerminalSendCommand({ command: 'npm test' });
+            ui.setPanelOpen(true);
+            ui.setActivePanelTab('TERMINAL');
+          }, 500);
+        }
+      });
+      return;
+    }
+    
+    emitTerminalSendCommand({ command: 'npm test' });
+    ui.setPanelOpen(true);
+    ui.setActivePanelTab('TERMINAL');
+  });
+
+  commandRegistry.register('snapshot.create', async () => {
+    const files = useWorkspaceStore.getState().files;
+    try {
+      await workspaceSnapshotService.createManual(files);
+      useNotificationStore.getState().addNotification('success', 'Snapshot created');
+      telemetry.trackAction('snapshot_create');
+    } catch {
+      useNotificationStore.getState().addNotification('error', 'Failed to create snapshot');
+      telemetry.trackError('snapshot_create_failed');
+    }
+  });
+
+  commandRegistry.register('snapshot.createManual', async () => {
+    const workspace = useWorkspaceStore.getState();
+    useConfirmDialogStore.getState().open({
+      title: 'Criar Snapshot',
+      description: 'Criar um snapshot manual do workspace atual?',
+      confirmLabel: 'Criar',
+      onConfirm: async () => {
+        try {
+          await workspaceSnapshotService.createManual(workspace.files);
+          useNotificationStore.getState().addNotification('success', 'Snapshot criado com sucesso');
+        } catch {
+          useNotificationStore.getState().addNotification('error', 'Falha ao criar snapshot');
+        }
+      }
+    });
+  });
+
+  commandRegistry.register('snapshot.restore', async (payload: { snapshotId: string }) => {
+    const snapshotId = payload?.snapshotId;
+    if (!snapshotId) {
+      useNotificationStore.getState().addNotification('warning', 'Snapshot ID required');
+      return;
+    }
+    const snapshotFiles = await workspaceSnapshotService.restoreSnapshot(snapshotId);
+    if (!snapshotFiles) {
+      useNotificationStore.getState().addNotification('error', 'Snapshot not found');
+      return;
+    }
+    useConfirmDialogStore.getState().open({
+      title: 'Restaurar Snapshot',
+      description: 'Isso ira substituir o workspace atual. Deseja continuar?',
+      confirmLabel: 'Restaurar',
+      onConfirm: () => {
+        useWorkspaceStore.getState().importWorkspaceData(snapshotFiles);
+        useNotificationStore.getState().addNotification('success', 'Workspace restaurado');
+      }
+    });
   });
 
   commandRegistry.register('workspace.exportZip', () => {
@@ -356,6 +527,51 @@ export const registerDefaultCommands = (): void => {
     const workspace = useWorkspaceStore.getState();
     workspace.createFileByPath(fileName, payload.content || '');
     useNotificationStore.getState().addNotification('success', `Template aplicado: ${fileName}`);
+  });
+
+  commandRegistry.register('templates.list', () => {
+    // This would show a list of available templates
+    useNotificationStore.getState().addNotification('info', 'Use templates via contexto ou Command Palette');
+  });
+
+  commandRegistry.register('templates.applyQuickStart', (ctx) => {
+    const payload = (ctx.payload || {}) as { templateId?: string };
+    const templateId = payload?.templateId;
+    
+    if (!templateId) {
+      useNotificationStore.getState().addNotification('warning', 'Template ID requerido');
+      return;
+    }
+
+    const templates: Record<string, Array<{ path: string; content: string }>> = {
+      'react-basic': [
+        { path: 'src/main.tsx', content: "import { createRoot } from 'react-dom/client';\nimport { App } from './App';\n\ncreateRoot(document.getElementById('root')!).render(<App />);\n" },
+        { path: 'src/App.tsx', content: "export const App = () => <h1>Hello CapyUNI</h1>;\n" },
+        { path: 'src/index.html', content: '<!doctype html><html><body><div id="root"></div></body></html>' }
+      ],
+      'node-cli': [
+        { path: 'src/index.ts', content: "console.log('CapyUNI CLI ready');\n" }
+      ]
+    };
+    
+    const template = templates[templateId];
+    if (!template) {
+      useNotificationStore.getState().addNotification('error', 'Template nao encontrado');
+      return;
+    }
+
+    const workspace = useWorkspaceStore.getState();
+    let created = 0;
+    template.forEach(file => {
+      const existing = workspace.getFileByPath(file.path);
+      if (!existing) {
+        workspace.createFileByPath(file.path, file.content);
+        created++;
+      }
+    });
+    
+    useNotificationStore.getState().addNotification('success', `${created} arquivo(s) criado(s) com template`);
+    telemetry.trackFeature('template_apply', { templateId });
   });
 
   commandRegistry.register('templates.addPlaybook', (ctx) => {

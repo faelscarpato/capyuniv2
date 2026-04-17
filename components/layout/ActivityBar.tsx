@@ -151,14 +151,15 @@ export const ActivityBar: React.FC = () => {
   // Desktop Vertical Layout
   return (
     <div className="w-14 h-full bg-ide-activity/80 backdrop-blur-2xl flex flex-col items-center py-4 z-50 border-r border-ide-border transition-all duration-300">
+<div className="flex flex-col  w-full px-1">
       <Item view="explorer" icon="Files" label="Arquivos" />
       <Item view="search" icon="Search" label="Busca" />
       <Item view="source_control" icon="GitBranch" label="Git" />
       <Item view="grounding" icon="Globe2" label="Web Search" />
 
-      <div className="h-px w-8 bg-ide-border-strong my-4" />
+      
 
-      <div className="flex flex-col gap-2 w-full px-1">
+      
         <Item
           icon="Rocket"
           label="Universe"
@@ -180,9 +181,8 @@ export const ActivityBar: React.FC = () => {
           activeCondition={activeRightSidebarView === 'chat' && isRightSidebarOpen}
           onClick={() => handleRightSidebarView('chat')}
         />
-      </div>
-
-      <div className="h-px w-8 bg-ide-border-strong my-4" />
+      
+</div>
 
       <button
         type="button"
@@ -191,7 +191,7 @@ export const ActivityBar: React.FC = () => {
         title="Terminal / Console"
       >
         <div className={`p-2 rounded-xl transition-colors ${isPanelOpen && activePanelTab === 'TERMINAL' ? 'bg-ide-accent/10 text-ide-accent' : 'hover:bg-ide-hover'}`}>
-          <Icon name="TerminalSquare" size={24} strokeWidth={isPanelOpen && activePanelTab === 'TERMINAL' ? 2 : 1.5} />
+          <Icon name="TerminalSquare" size={22} strokeWidth={isPanelOpen && activePanelTab === 'TERMINAL' ? 2 : 1.5} />
         </div>
       </button>
 
@@ -208,9 +208,27 @@ export const ActivityBar: React.FC = () => {
         </div>
       </button>
 
+      <button
+        type="button"
+        onClick={() => executeAppCommand('ui.openSnapshots')}
+        className="w-full h-12 flex items-center justify-center text-ide-muted hover:text-ide-text transition-all active:scale-90"
+        title={tt('Snapshots', 'Snapshots')}
+      >
+        <div className="p-2 rounded-xl hover:bg-ide-hover">
+          <Icon name="History" size={22} strokeWidth={1.8} />
+        </div>
+      </button>
+
+      
+
       <div className="flex-1" />
 
-      <button type="button" className="w-full h-12 flex items-center justify-center text-ide-muted hover:text-ide-text mb-4 transition-all active:scale-95">
+      <button 
+        type="button" 
+        onClick={() => executeAppCommand('ui.openSettings')}
+        className="w-full h-12 flex items-center justify-center text-ide-muted hover:text-ide-text mb-2 transition-all active:scale-95"
+        title={tt('Configuracoes', 'Settings')}
+      >
         <div className="p-2 rounded-xl hover:bg-ide-hover">
           <Icon name="Settings" size={24} strokeWidth={1.5} />
         </div>
