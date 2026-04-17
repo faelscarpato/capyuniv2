@@ -1,4 +1,4 @@
-# Test Scaffolding (V2 Migration)
+# Test Scaffolding (Migration)
 
 This directory tracks the domain-focused test plan introduced during the V2 migration.
 
