@@ -1,4 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
+import { getUserFriendlyError } from '../features/ai/services/aiErrorHandler';
 
 interface GenerateTextParams {
   apiKey: string;
@@ -70,7 +71,8 @@ export const generateCodeFix = async ({ apiKey, code, instruction, fileName }: F
         return result;
     } catch (error: any) {
         console.error("Code Fix Error", error);
-        throw error;
+        const friendlyError = getUserFriendlyError(error);
+        throw new Error(friendlyError);
     }
 };
 
@@ -95,7 +97,7 @@ export const analyzeCodeHover = async (apiKey: string, codeSnippet: string, lang
         });
         return response.text || "Sem análise disponível.";
     } catch (error) {
-        return "Erro na análise IA.";
+        return getUserFriendlyError(error);
     }
 };
 
