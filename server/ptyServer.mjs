@@ -66,6 +66,13 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (req.url === '/health') {
+    res.statusCode = 200;
+    res.setHeader('content-type', 'application/json');
+    res.end(JSON.stringify({ status: 'healthy', timestamp: new Date().toISOString() }));
+    return;
+  }
+
   res.statusCode = 200;
   res.setHeader('content-type', 'application/json');
   res.end(JSON.stringify({ ok: true, service: 'capy-pty', mode: 'dual-runtime', listenHost: LISTEN_HOST }));
@@ -101,7 +108,21 @@ wss.on('connection', (socket, req) => {
     sendJson({ type: 'error', message });
   };
 
-  const resolvePathForMode = (rawPath, options = {}) => {
+  const isSensitivePath = (pathStr) => {
+    const sensitivePatterns = [
+      /\bC:\\Windows\b/i,
+      /\b\/etc\b/i,
+      /\b\/usr\b/i,
+      /\b\/var\b/i,
+      /\b\/root\b/i,
+      /\b\/home\b/i,
+      /\bC:\\Program Files\b/i,
+      /\bC:\\Users\b/i
+    ];
+    return sensitivePatterns.some(pattern => pattern.test(pathStr));
+  };
+
+const resolvePathForMode = (rawPath, options = {}) => {
     const { allowRoot = false, relativeBase = fsRoot } = options;
     const incoming = String(rawPath || '').replace(/\0/g, '').trim();
 
@@ -110,25 +131,30 @@ wss.on('connection', (socket, req) => {
       throw new Error('Path cannot be empty.');
     }
 
+    let resolvedPath;
     if (runtimeMode === 'online') {
       const normalized = normalizeRelativeWorkspacePath(incoming);
       if (!normalized) return WORKSPACE_DIR;
-      const resolved = path.resolve(WORKSPACE_DIR, normalized);
-      if (resolved !== WORKSPACE_DIR && !resolved.startsWith(`${WORKSPACE_DIR}${path.sep}`)) {
+      resolvedPath = path.resolve(WORKSPACE_DIR, normalized);
+      if (resolvedPath !== WORKSPACE_DIR && !resolvedPath.startsWith(`${WORKSPACE_DIR}${path.sep}`)) {
         throw new Error('Path escapes online workspace.');
       }
-      return resolved;
+    } else {
+      if (incoming === '/') {
+        resolvedPath = path.parse(currentCwd).root || currentCwd;
+      } else if (isAbsoluteLike(incoming)) {
+        resolvedPath = path.resolve(incoming);
+      } else {
+        resolvedPath = path.resolve(relativeBase, incoming);
+      }
+
+      // Security: Prevent access to sensitive system paths in local mode
+      if (isSensitivePath(resolvedPath)) {
+        throw new Error('Access to sensitive system paths is not allowed.');
+      }
     }
 
-    if (incoming === '/') {
-      return path.parse(currentCwd).root || currentCwd;
-    }
-
-    if (isAbsoluteLike(incoming)) {
-      return path.resolve(incoming);
-    }
-
-    return path.resolve(relativeBase, incoming);
+    return resolvedPath;
   };
 
   const resolveGitCwd = (cwdInput) => {
@@ -191,6 +217,25 @@ wss.on('connection', (socket, req) => {
           sendSocketError('Input exceeds maximum size.', requestId);
           return;
         }
+
+        // Security: Basic input sanitization to prevent dangerous commands
+        const dangerousPatterns = [
+          /\brm\s+-rf\b/i,
+          /\bdel\s+\/s\b/i,
+          /\bformat\b/i,
+          /\brd\s+\/s\b/i,
+          /\bshutdown\b/i,
+          /\breboot\b/i
+        ];
+
+        const trimmedData = msg.data.trim();
+        for (const pattern of dangerousPatterns) {
+          if (pattern.test(trimmedData)) {
+            sendSocketError('Command contains potentially dangerous operation and is blocked.', requestId);
+            return;
+          }
+        }
+
         ptyProcess.write(msg.data);
         return;
       }

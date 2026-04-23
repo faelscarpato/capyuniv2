@@ -33,6 +33,14 @@ export interface AIStoreState {
   messages: AIChatMessage[];
   isLoading: boolean;
   currentWorkspaceId: string | null;
+
+  /**
+   * When true, inline code suggestions are enabled. Users can toggle this in
+   * settings or the AI drawer. The default is true. This flag is used by
+   * the inline suggestion controller to decide whether to request completions.
+   */
+  suggestionsEnabled: boolean;
+  toggleSuggestionsEnabled: () => void;
   // Legacy actions.
   setApiKey: (key: string) => void;
   setProviderApiKey: (provider: AIProvider, key: string) => void;
@@ -117,6 +125,9 @@ export const useAIStore = create<AIStoreState>((set) => ({
   },
   clearMessages: () => set({ messages: [] }),
   currentWorkspaceId: null,
+
+  suggestionsEnabled: true,
+  toggleSuggestionsEnabled: () => set((state) => ({ suggestionsEnabled: !state.suggestionsEnabled })),
 
   loadWorkspaceHistory: async (workspaceId) => {
     set({ currentWorkspaceId: workspaceId, isLoading: true });

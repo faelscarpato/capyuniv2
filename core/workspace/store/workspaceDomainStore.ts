@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { FileNode, FileSystem, WorkspaceState } from '../../../types';
 import { INITIAL_FILES } from '../../../constants';
 import { triggerEditorHook } from '../../../lib/extensions';
+import { performanceMonitor } from '../../../lib/performance';
 import { workspacePersistenceService } from '../services/workspacePersistenceService';
 import { workspaceEffectsService } from '../services/workspaceEffectsService';
 import { workspaceSyncBridge } from '../services/workspaceSyncBridge';
@@ -53,6 +54,7 @@ export const useWorkspaceDomainStore = create<WorkspaceState & WorkspaceDomainAc
   pendingScroll: null,
 
   initialize: async () => {
+    performanceMonitor.start('workspace-initialize');
     const saved = await workspacePersistenceService.load();
     if (saved) {
       set({
@@ -63,6 +65,7 @@ export const useWorkspaceDomainStore = create<WorkspaceState & WorkspaceDomainAc
       });
     }
     get().syncAllToPTY();
+    performanceMonitor.end('workspace-initialize');
   },
 
   createFile: (parentId, name) => {
