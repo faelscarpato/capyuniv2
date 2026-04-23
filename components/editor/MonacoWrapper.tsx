@@ -35,7 +35,13 @@ export const MonacoWrapper: React.FC = () => {
     setPreviewFileId
   } = useUIStore();
   const { addNotification } = useNotificationStore();
-  const { preferredProvider, geminiApiKey, groqApiKey, llm7ApiKey } = useAIStore();
+  const {
+    preferredProvider,
+    geminiApiKey,
+    groqApiKey,
+    llm7ApiKey,
+    suggestionsEnabled
+  } = useAIStore();
 
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
@@ -84,6 +90,11 @@ export const MonacoWrapper: React.FC = () => {
     defineCapyMonacoThemes(monaco);
     applyMonacoTheme(monaco, currentTheme);
 
+    // Apply inline suggestions option based on store flag. Without a
+    // provider registered, Monaco will provide word-based suggestions. A
+    // future iteration can register an inline completion provider to use AI.
+    editor.updateOptions({ inlineSuggest: { enabled: suggestionsEnabled } });
+
     hoverDisposeRef.current?.();
     hoverDisposeRef.current = registerAIHoverProviders(monaco);
 
@@ -96,6 +107,13 @@ export const MonacoWrapper: React.FC = () => {
       });
     });
   };
+
+  // Update editor options when the suggestionsEnabled flag changes.
+  useEffect(() => {
+    if (editorRef.current) {
+      editorRef.current.updateOptions({ inlineSuggest: { enabled: suggestionsEnabled } });
+    }
+  }, [suggestionsEnabled]);
 
   useEffect(() => {
     if (monacoRef.current) {

@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { MainLayout } from './components/layout/MainLayout';
-import { WelcomeScreen } from './components/layout/WelcomeScreen';
+import React, { useEffect, useState, Suspense } from 'react';
+const MainLayout = React.lazy(() => import('./components/layout/MainLayout').then(module => ({ default: module.MainLayout })));
+const WelcomeScreen = React.lazy(() => import('./components/layout/WelcomeScreen').then(module => ({ default: module.WelcomeScreen })));
 import { useWorkspaceStore } from './stores/workspaceStore';
 import { useOnboardingStore } from './features/onboarding/store/onboardingStore';
 import { registerDefaultCommands } from './core/commands/handlers/registerDefaultCommands';
@@ -29,10 +29,18 @@ const App: React.FC = () => {
   }
 
   if (!hasCompletedWelcome) {
-      return <WelcomeScreen onLaunch={markWelcomeCompleted} />;
+    return (
+      <Suspense fallback={<div className="h-screen w-screen bg-[#0F172A] flex items-center justify-center"><div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin"></div></div>}>
+        <WelcomeScreen onLaunch={markWelcomeCompleted} />
+      </Suspense>
+    );
   }
 
-  return <MainLayout />;
+  return (
+    <Suspense fallback={<div className="h-screen w-screen bg-[#0F172A] flex items-center justify-center"><div className="w-10 h-10 border-4 border-white/20 border-t-white rounded-full animate-spin"></div></div>}>
+      <MainLayout />
+    </Suspense>
+  );
 };
 
 registerServiceWorker();

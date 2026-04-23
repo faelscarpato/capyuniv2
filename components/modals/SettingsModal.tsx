@@ -17,7 +17,17 @@ const PROVIDER_LINKS = {
 
 export const SettingsModal: React.FC = () => {
   const { isSettingsOpen, setSettingsOpen, language, setTheme, currentTheme } = useUIStore();
-  const { setApiKey, setProviderApiKey, preferredProvider, apiKey, geminiApiKey, groqApiKey, llm7ApiKey } = useAIStore();
+  const {
+    setApiKey,
+    setProviderApiKey,
+    preferredProvider,
+    apiKey,
+    geminiApiKey,
+    groqApiKey,
+    llm7ApiKey,
+    suggestionsEnabled,
+    toggleSuggestionsEnabled
+  } = useAIStore();
   const { mode, setMode } = useRuntimeModeStore();
   const { user, signOut } = useSupabaseAuth();
   
@@ -215,6 +225,23 @@ export const SettingsModal: React.FC = () => {
                       className="w-full px-3 py-1.5 bg-ide-accent/20 hover:bg-ide-accent/40 text-ide-accent rounded text-sm"
                     >
                       {tt('Salvar', 'Save')}
+                    </button>
+                  </div>
+
+                  {/* Inline Suggestions Toggle */}
+                  <div className="border border-ide-border rounded mb-3 p-3 flex items-center justify-between">
+                    <span className="text-white font-medium">
+                      {tt('Sugestões Inline', 'Inline Suggestions')}
+                    </span>
+                    <button
+                      onClick={() => toggleSuggestionsEnabled()}
+                      className={`relative inline-flex h-6 w-12 items-center rounded-full transition-colors ${suggestionsEnabled ? 'bg-ide-accent' : 'bg-ide-hover'}`}
+                      aria-pressed={suggestionsEnabled}
+                      aria-label={suggestionsEnabled ? tt('Desativar sugestões', 'Disable suggestions') : tt('Ativar sugestões', 'Enable suggestions')}
+                    >
+                      <span
+                        className={`inline-block h-4 w-4 transform bg-white rounded-full shadow-md transition-transform ${suggestionsEnabled ? 'translate-x-6' : 'translate-x-1'}`}
+                      />
                     </button>
                   </div>
 

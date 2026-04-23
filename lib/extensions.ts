@@ -1,5 +1,9 @@
 export type ExtensionId = string;
 
+// Import React lazy to avoid ReferenceError when lazily loading components. Without this import,
+// `React` would be undefined in this module, causing runtime errors when `React.lazy` is invoked.
+import { lazy } from 'react';
+
 export interface ChatContext {
   runTerminalCommand?: (command: string) => void;
   getActiveFilePath?: () => string | null;
@@ -206,3 +210,6 @@ export function listAvailableRefactors(fileType: string): RefactorEntry[] {
 
   return items;
 }
+
+// Ensure the path is relative to the current file and includes the correct extension/directory
+const MainLayout = lazy(() => import('../components/layout/MainLayout'));

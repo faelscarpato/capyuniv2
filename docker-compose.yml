@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  capy-ide:
+    build: .
+    ports:
+      - "3000:3000"
+      - "8787:8787"
+    volumes:
+      - ./.workspace:/app/.workspace
+    environment:
+      - NODE_ENV=production
+      - PTY_PORT=8787
+      - PTY_HOST=0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s

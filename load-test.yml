@@ -1,0 +1,52 @@
+config:
+  target: 'http://localhost:8787'
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      name: Warm up
+    - duration: 120
+      arrivalRate: 10
+      name: Load testing
+    - duration: 60
+      arrivalRate: 20
+      name: Stress testing
+  defaults:
+    headers:
+      Content-Type: 'application/json'
+
+scenarios:
+  - name: Health check
+    weight: 30
+    requests:
+      - method: GET
+        url: '/health'
+
+  - name: Terminal input
+    weight: 40
+    requests:
+      - method: POST
+        url: '/pty'
+        headers:
+          Upgrade: websocket
+          Connection: Upgrade
+        body: '{"type":"input","data":"echo hello"}'
+
+  - name: File operations
+    weight: 20
+    requests:
+      - method: POST
+        url: '/pty'
+        headers:
+          Upgrade: websocket
+          Connection: Upgrade
+        body: '{"type":"scan"}'
+
+  - name: Git operations
+    weight: 10
+    requests:
+      - method: POST
+        url: '/pty'
+        headers:
+          Upgrade: websocket
+          Connection: Upgrade
+        body: '{"type":"gitStatus"}'

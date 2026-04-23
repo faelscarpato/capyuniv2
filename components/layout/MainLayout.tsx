@@ -5,8 +5,13 @@ import { StatusBar } from './StatusBar';
 import { useUIStore } from '../../stores/uiStore';
 import { ToastContainer } from '../ui/Toast';
 import { applyTheme } from '../../lib/themes';
+import { useDynamicTheme } from '../../hooks/useDynamicTheme';
+
+
+
 
 const Sidebar = lazy(() => import('./Sidebar').then((mod) => ({ default: mod.Sidebar })));
+// Load the right sidebar lazily. This sidebar hosts components like Chat, WebPreview, CapyUniverse, etc.
 const RightSidebar = lazy(() => import('./RightSidebar').then((mod) => ({ default: mod.RightSidebar })));
 const EditorArea = lazy(() => import('../editor/EditorArea').then((mod) => ({ default: mod.EditorArea })));
 const Panel = lazy(() => import('./Panel').then((mod) => ({ default: mod.Panel })));
@@ -39,6 +44,9 @@ const SettingsModal = lazy(() =>
   import('../modals/SettingsModal').then((mod) => ({ default: mod.SettingsModal }))
 );
 
+
+
+
 export const MainLayout: React.FC = () => {
     const {
         currentTheme,
@@ -47,13 +55,22 @@ export const MainLayout: React.FC = () => {
         isMobile, setIsMobile, setTutorialOpen
     } = useUIStore();
 
+    // Retrieve dynamic theme from system and time of day. This hook determines whether
+    // the interface should use light or dark mode when the theme is set to `auto`.
+    // See `hooks/useDynamicTheme.ts` for implementation details. Without this,
+    // `dynamicTheme` would be undefined and cause a ReferenceError.
+    const { theme: dynamicTheme } = useDynamicTheme();
+
     const [isResizingLeft, setIsResizingLeft] = useState(false);
     const [isResizingRight, setIsResizingRight] = useState(false);
 
     const resizeStartRef = useRef<{ x: number, width: number }>({ x: 0, width: 0 });
+    const mainRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
-        applyTheme(currentTheme);
+        // Use dynamic theme if current theme is 'auto' or system preference, else use selected theme
+        const themeToApply = currentTheme === 'auto' ? dynamicTheme : currentTheme;
+        applyTheme(themeToApply);
 
         const tutorialSeen = localStorage.getItem('capy_tutorial_seen');
         if (!tutorialSeen) {
@@ -62,7 +79,7 @@ export const MainLayout: React.FC = () => {
             }, 1500);
             return () => clearTimeout(timer);
         }
-    }, [currentTheme, setTutorialOpen]);
+    }, [currentTheme, dynamicTheme, setTutorialOpen]);
 
     useEffect(() => {
         const handleResize = () => {
@@ -72,6 +89,39 @@ export const MainLayout: React.FC = () => {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, [setIsMobile]);
+
+    // Keyboard navigation for accessibility
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            // Alt+1: Focus sidebar
+            if (event.altKey && event.key === '1') {
+                event.preventDefault();
+                const sidebar = document.querySelector('[role="complementary"]') as HTMLElement;
+                sidebar?.focus();
+            }
+            // Alt+2: Focus editor
+            if (event.altKey && event.key === '2') {
+                event.preventDefault();
+                const editor = document.querySelector('[role="main"]') as HTMLElement;
+                editor?.focus();
+            }
+            // Alt+3: Focus right sidebar
+            if (event.altKey && event.key === '3') {
+                event.preventDefault();
+                const rightSidebar = document.querySelector('[role="complementary"][aria-label="Right sidebar"]') as HTMLElement;
+                rightSidebar?.focus();
+            }
+            // Alt+4: Focus panel
+            if (event.altKey && event.key === '4') {
+                event.preventDefault();
+                const panel = document.querySelector('[role="region"][aria-label*="panel"]') as HTMLElement;
+                panel?.focus();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     // Resizing Logic
     useEffect(() => {
@@ -128,7 +178,11 @@ export const MainLayout: React.FC = () => {
     const isResizing = isResizingLeft || isResizingRight;
 
     return (
-        <div className="flex flex-col h-[100dvh] w-screen bg-ide-bg text-ide-text overflow-hidden relative">
+        <div
+            className="flex flex-col h-[100dvh] w-screen bg-ide-bg text-ide-text overflow-hidden relative"
+            role="application"
+            aria-label="CapyIDE - Desktop IDE"
+        >
             <Topbar />
 
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden relative">
@@ -146,6 +200,9 @@ export const MainLayout: React.FC = () => {
                             : `relative flex-shrink-0 ${isSidebarOpen ? 'border-r border-ide-border' : 'w-0 overflow-hidden'}`
                         }
             `}
+                    role="complementary"
+                    aria-label="Project sidebar"
+                    tabIndex={-1}
                 >
                     <Suspense fallback={<div className="h-full w-full animate-pulse bg-ide-sidebar/70" />}>
                         <Sidebar />
@@ -161,7 +218,13 @@ export const MainLayout: React.FC = () => {
                 )}
 
                 {/* --- MAIN EDITOR AREA --- */}
-                <main className={`flex-1 flex flex-col min-w-0 min-h-0 relative bg-ide-bg transition-all duration-300 overflow-hidden ${isMobile ? 'pb-[calc(76px+env(safe-area-inset-bottom))]' : ''}`}>
+                <main
+                    ref={mainRef}
+                    className="flex-1 flex flex-col min-w-0 min-h-0 relative bg-ide-bg transition-all duration-300 overflow-hidden"
+                    role="main"
+                    aria-label="Editor workspace"
+                    tabIndex={-1}
+                >
                     <Suspense fallback={<div className="flex-1 animate-pulse bg-ide-bg/70" />}>
                         <EditorArea />
                     </Suspense>
@@ -200,6 +263,9 @@ export const MainLayout: React.FC = () => {
                             : `relative flex-shrink-0 ${isRightSidebarOpen ? 'border-l border-ide-border' : 'w-0 overflow-hidden'}`
                         }
             `}
+                    role="complementary"
+                    aria-label="Right sidebar"
+                    tabIndex={-1}
                 >
                     <Suspense fallback={<div className="h-full w-full animate-pulse bg-ide-sidebar/70" />}>
                         <RightSidebar />
@@ -211,24 +277,32 @@ export const MainLayout: React.FC = () => {
             {isMobile && <ActivityBar />}
 
             {/* Status Bar (Desktop Only) */}
-            {!isMobile && <StatusBar />}
+            {!isMobile && (
+                <StatusBar role="status" aria-live="polite" aria-label="Status bar" />
+            )}
 
-            {/* Global Modals */}
+            {/* Render modals and overlays */}
             <Suspense fallback={null}>
+                {/* Global overlays for quick commands and palettes */}
                 <QuickOpen />
                 <CommandPalette />
+
+                {/* Various modal dialogs */}
                 <AboutModal />
                 <DocsModal />
                 <TutorialModal />
                 <ApiKeyModal />
-                <WorkspaceActionDialogModal />
-                <ConfirmDialogModal />
-                <RuntimeModeModal />
                 <SnapshotsModal />
                 <AuthModal />
                 <SettingsModal />
+                <WorkspaceActionDialogModal />
+                <ConfirmDialogModal />
+                <RuntimeModeModal />
             </Suspense>
+
+            {/* Toast notifications */}
             <ToastContainer />
+
         </div>
     );
 };

@@ -20,6 +20,13 @@ export interface ThemeDefinition {
 }
 
 export const themes: Record<string, ThemeDefinition> = {
+    'auto': {
+        id: 'auto',
+        label: 'Auto (Dynamic)',
+        type: 'light', // Will be overridden by dynamic logic
+        colors: {}, // Will be overridden
+        monacoTheme: 'vs' // Will be overridden
+    },
     'midnight-pro': {
         id: 'midnight-pro',
         label: 'Midnight Pro',

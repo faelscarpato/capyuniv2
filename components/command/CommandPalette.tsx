@@ -5,15 +5,15 @@ import { Icon } from '../ui/Icon';
 import { workspacePackageService } from '../../features/productivity/import-export/workspacePackageService';
 import { themes } from '../../lib/themes';
 import { useNotificationStore } from '../../stores/notificationStore';
-import { executePaletteCommand } from '../../core/commands/handlers/registerDefaultCommands';
+import { executeAppCommand } from '../../core/commands/handlers/registerDefaultCommands';
 
 export const CommandPalette: React.FC = () => {
   const { isCommandPaletteOpen, setCommandPalette, setTheme, language } = useUIStore();
   const tt = (pt: string, en: string) => (language === 'pt' ? pt : en);
-  
+
   const { importWorkspaceData } = useWorkspaceStore();
   const { addNotification } = useNotificationStore();
-  
+
   const [query, setQuery] = useState('');
   const [activeIndex, setActiveIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -46,9 +46,9 @@ export const CommandPalette: React.FC = () => {
   };
 
   const commands = [
-    { label: 'View: Toggle Sidebar', action: () => executePaletteCommand('ui.toggleSidebar'), icon: 'Layout' },
-    { label: 'View: Toggle Panel', action: () => executePaletteCommand('ui.togglePanel'), icon: 'PanelBottom' },
-    
+    { label: 'View: Toggle Sidebar', action: () => executeAppCommand('ui.toggleSidebar'), icon: 'Layout' },
+    { label: 'View: Toggle Panel', action: () => executeAppCommand('ui.togglePanel'), icon: 'PanelBottom' },
+
     // Theme Commands
     ...Object.values(themes).map(theme => ({
         label: `Preferences: Color Theme - ${theme.label}`,
@@ -56,18 +56,18 @@ export const CommandPalette: React.FC = () => {
         icon: 'Palette'
     })),
 
-    { label: 'Capy: Open Chat', action: () => executePaletteCommand('ui.openChat'), icon: 'Bot' },
-    { label: 'Workspace: New File', action: () => executePaletteCommand('workspace.createFile'), icon: 'FilePlus' },
-    { label: 'Workspace: New Folder', action: () => executePaletteCommand('workspace.createFolder'), icon: 'FolderPlus' },
-    { label: 'Workspace: Export Zip', action: () => executePaletteCommand('workspace.exportZip'), icon: 'Download' },
+    { label: 'Capy: Open Chat', action: () => executeAppCommand('ui.openChat'), icon: 'Bot' },
+    { label: 'Workspace: New File', action: () => executeAppCommand('workspace.createFile'), icon: 'FilePlus' },
+    { label: 'Workspace: New Folder', action: () => executeAppCommand('workspace.createFolder'), icon: 'FolderPlus' },
+    { label: 'Workspace: Export Zip', action: () => executeAppCommand('workspace.exportZip'), icon: 'Download' },
     { label: 'Workspace: Import Zip', action: () => fileInputRef.current?.click(), icon: 'Upload' },
-    { label: tt('Runtime: Ativar Runtime Local', 'Runtime: Activate Local Runtime'), action: () => executePaletteCommand('runtime.activateLocal'), icon: 'Terminal' },
-    { label: tt('Runtime: Desconectar Runtime Local', 'Runtime: Disconnect Local Runtime'), action: () => executePaletteCommand('runtime.disconnect'), icon: 'XCircle' },
-    { label: tt('Controle de Código-Fonte: Atualizar', 'Source Control: Refresh'), action: () => executePaletteCommand('sourceControl.refresh'), icon: 'RefreshCw' },
-    
+    { label: tt('Runtime: Ativar Runtime Local', 'Runtime: Activate Local Runtime'), action: () => executeAppCommand('runtime.activateLocal'), icon: 'Terminal' },
+    { label: tt('Runtime: Desconectar Runtime Local', 'Runtime: Disconnect Local Runtime'), action: () => executeAppCommand('runtime.disconnect'), icon: 'XCircle' },
+    { label: tt('Controle de Código-Fonte: Atualizar', 'Source Control: Refresh'), action: () => executeAppCommand('sourceControl.refresh'), icon: 'RefreshCw' },
+
     // Templates
-    { label: 'Template: React Basic', action: () => executePaletteCommand('templates.applyQuickStart', { templateId: 'react-basic' }), icon: 'Layout' },
-    { label: 'Template: Node CLI', action: () => executePaletteCommand('templates.applyQuickStart', { templateId: 'node-cli' }), icon: 'Terminal' },
+    { label: 'Template: React Basic', action: () => executeAppCommand('templates.applyQuickStart', { templateId: 'react-basic' }), icon: 'Layout' },
+    { label: 'Template: Node CLI', action: () => executeAppCommand('templates.applyQuickStart', { templateId: 'node-cli' }), icon: 'Terminal' },
   ];
 
   const filtered = commands.filter(c => c.label.toLowerCase().includes(query.toLowerCase()));
@@ -95,15 +95,15 @@ export const CommandPalette: React.FC = () => {
 
   return (
     <>
-    <input 
-      type="file" 
-      ref={fileInputRef} 
-      className="hidden" 
-      accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip" 
-      onChange={handleImport} 
+    <input
+      type="file"
+      ref={fileInputRef}
+      className="hidden"
+      accept=".zip,application/zip,application/x-zip-compressed,multipart/x-zip"
+      onChange={handleImport}
     />
     <div className="fixed inset-0 z-[60] flex justify-center pt-2 md:pt-4 px-2" onClick={() => setCommandPalette(false)}>
-      <div 
+      <div
         className="w-full max-w-[600px] bg-ide-activity shadow-2xl rounded-md border border-ide-border flex flex-col max-h-[400px] overflow-hidden animate-in fade-in zoom-in-95 duration-100"
         onClick={e => e.stopPropagation()}
       >

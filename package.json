@@ -7,11 +7,19 @@
     "dev:client": "vite",
     "dev:server": "node server/ptyServer.mjs",
     "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "start": "NODE_ENV=production node server/ptyServer.mjs",
     "build": "vite build",
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "format": "npx prettier --write .",
+    "format:check": "npx prettier --check .",
+    "analyze-bundle": "npx vite-bundle-analyzer dist",
+    "load-test": "artillery run load-test.yml",
+    "docker:build": "docker build -t capy-ide .",
+    "docker:run": "docker run -p 3000:3000 -p 8787:8787 capy-ide",
+    "deploy": "npm run build && npm run docker:build && docker-compose up -d"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
@@ -47,6 +55,9 @@
     "postcss": "^8.5.6",
     "tailwindcss": "^3.4.13",
     "typescript": "~5.8.2",
-    "vite": "^6.2.0"
+    "vite": "^6.2.0",
+    "prettier": "^3.3.0",
+    "vite-bundle-analyzer": "^0.11.0",
+    "artillery": "^2.0.10"
   }
 }

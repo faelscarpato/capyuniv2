@@ -142,6 +142,18 @@ export const Topbar: React.FC = () => {
     ]
   };
 
+  // Map menu keys to icons for mobile view. These names correspond to
+  // lucide-react icons registered in the Icon component. When adding a
+  // new menu section, ensure there is an appropriate icon here. If a
+  // mapping is missing the button will fall back to the menu key text.
+  const menuIconMap: Record<string, string> = {
+    [t('file', language)]: 'Files',
+    [t('edit', language)]: 'Wand2',
+    [t('view', language)]: 'Layout',
+    [t('functions', language)]: 'Rocket',
+    [t('run', language)]: 'Terminal',
+    [t('help', language)]: 'Info'
+  };
   const menuKeys = Object.keys(menuItems);
 
   return (
@@ -188,9 +200,14 @@ export const Topbar: React.FC = () => {
                   type="button"
                   onClick={() => setActiveMenu(activeMenu === key ? null : key)}
                   onMouseEnter={() => !isMobile && activeMenu && setActiveMenu(key)}
-                  className={`px-2 sm:px-3 py-1 text-xs rounded hover:bg-ide-hover capitalize transition-colors ${activeMenu === key ? 'bg-ide-hover text-ide-text' : 'text-ide-muted hover:text-ide-text'}`}
+                  className={`px-2 sm:px-3 py-1 flex items-center justify-center rounded hover:bg-ide-hover transition-colors ${activeMenu === key ? 'bg-ide-hover text-ide-text' : 'text-ide-muted hover:text-ide-text'}`}
+                  title={key}
                 >
-                  {key}
+                  {isMobile ? (
+                    menuIconMap[key] ? <Icon name={menuIconMap[key]} size={18} /> : <span className="text-xs capitalize">{key}</span>
+                  ) : (
+                    <span className="text-xs capitalize">{key}</span>
+                  )}
                 </button>
 
                 {activeMenu === key && (
