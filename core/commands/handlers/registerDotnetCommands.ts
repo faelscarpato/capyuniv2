@@ -48,7 +48,7 @@ const runDotnetCommand = (command: string | null, successMessage: string, missin
   if (!ensureLocalRuntime()) return;
 
   openTerminal();
-  emitTerminalSendCommand({ command });
+  emitTerminalSendCommand({ command: command.endsWith('\r') ? command : `${command}\r` });
   useNotificationStore.getState().addNotification('info', successMessage);
 };
 
