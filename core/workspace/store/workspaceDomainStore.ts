@@ -248,6 +248,7 @@ export const useWorkspaceDomainStore = create<WorkspaceState & WorkspaceDomainAc
     set({ files: newFiles, openTabs: [], activeTabId: null, expandedFolders: ['root'] });
     workspaceEffectsService.persist(get());
     workspaceEffectsService.onImport(newFiles);
+    workspaceSyncBridge.syncAllFiles(newFiles, (id) => workspacePathService.getPathForId(newFiles, id));
   },
 
   refreshFromPTY: () => {
