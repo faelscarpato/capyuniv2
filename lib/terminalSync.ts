@@ -1,15 +1,22 @@
 import type { RuntimeMode, TerminalClientMessage } from '../shared/contracts/terminal';
 
-const WS_PROTOCOL = window.location.protocol === 'https:' ? 'wss' : 'ws';
-const resolvePtyWsUrl = () => {
-  const fallbackUrl = `${WS_PROTOCOL}://${window.location.hostname || '127.0.0.1'}:8787/pty`;
-  const configuredUrl = (import.meta as any).env?.VITE_PTY_WS_URL as string | undefined;
-  if (!configuredUrl) return fallbackUrl;
-  if (window.location.protocol === 'https:' && configuredUrl.startsWith('ws://')) {
-    return `wss://${configuredUrl.slice('ws://'.length)}`;
-  }
-  return configuredUrl;
+const isLoopbackHostname = (hostname: string): boolean => {
+  const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
 };
+
+const resolvePtyWsUrl = (): string | null => {
+  const configuredUrl = ((import.meta as any).env?.VITE_PTY_WS_URL as string | undefined)?.trim();
+  if (configuredUrl) return configuredUrl;
+
+  const hostname = window.location.hostname || '127.0.0.1';
+  if (isLoopbackHostname(hostname)) {
+    return `ws://${hostname}:8787/pty`;
+  }
+
+  return null;
+};
+
 const PTY_WS_URL = resolvePtyWsUrl();
 
 interface PendingRequest {
@@ -22,6 +29,8 @@ class TerminalSyncManager {
   private socket: WebSocket | null = null;
   private queue: TerminalClientMessage[] = [];
   private isConnected = false;
+  private isConnectionAvailable = Boolean(PTY_WS_URL);
+  private reconnectTimer: number | null = null;
   private requestCounter = 0;
   private pendingRequests = new Map<string, PendingRequest>();
 
@@ -31,10 +40,14 @@ class TerminalSyncManager {
   public onCwdChanged: ((cwd: string) => void) | null = null;
 
   constructor() {
-    this.connect();
+    if (this.isConnectionAvailable) {
+      this.connect();
+    }
   }
 
   private connect() {
+    if (!PTY_WS_URL || !this.isConnectionAvailable) return;
+
     try {
       this.socket = new WebSocket(PTY_WS_URL);
       this.socket.onopen = () => {
@@ -72,7 +85,9 @@ class TerminalSyncManager {
       this.socket.onclose = () => {
         this.isConnected = false;
         this.rejectAllPending('Terminal sync disconnected.');
-        setTimeout(() => this.connect(), 3000);
+        if (!this.isConnectionAvailable) return;
+        if (this.reconnectTimer) window.clearTimeout(this.reconnectTimer);
+        this.reconnectTimer = window.setTimeout(() => this.connect(), 3000);
       };
       this.socket.onerror = () => {
         this.isConnected = false;
@@ -108,6 +123,12 @@ class TerminalSyncManager {
   }
 
   private send(msg: TerminalClientMessage) {
+    if (!this.isConnectionAvailable) return;
+
+    if (!this.socket) {
+      this.connect();
+    }
+
     if (this.isConnected) {
       this.socket?.send(JSON.stringify(msg));
       return;
@@ -116,6 +137,10 @@ class TerminalSyncManager {
   }
 
   private sendRequest<T>(msg: TerminalClientMessage & { requestId?: string }, timeoutMs = 15000): Promise<T> {
+    if (!this.isConnectionAvailable) {
+      return Promise.reject(new Error('Runtime bridge is unavailable on this deployment.'));
+    }
+
     const requestId = `req-${Date.now()}-${this.requestCounter++}`;
     const message = { ...msg, requestId } as TerminalClientMessage & { requestId: string };
     return new Promise<T>((resolve, reject) => {
