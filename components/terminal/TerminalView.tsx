@@ -12,16 +12,24 @@ import { useLocalRuntimeStore } from '../../features/local-runtime/store/localRu
 import { localRuntimeAdapter } from '../../features/local-runtime/adapters/LocalRuntimeAdapter';
 
 type TerminalMode = 'real' | 'simulated';
-const resolvePtyWsUrl = () => {
-  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const fallbackUrl = `${protocol}://${window.location.hostname || '127.0.0.1'}:8787/pty`;
-  const configuredUrl = (import.meta as any).env?.VITE_PTY_WS_URL as string | undefined;
-  if (!configuredUrl) return fallbackUrl;
-  if (window.location.protocol === 'https:' && configuredUrl.startsWith('ws://')) {
-    return `wss://${configuredUrl.slice('ws://'.length)}`;
-  }
-  return configuredUrl;
+
+const isLoopbackHostname = (hostname: string): boolean => {
+  const normalized = hostname.replace(/^\[|\]$/g, '').toLowerCase();
+  return normalized === 'localhost' || normalized === '127.0.0.1' || normalized === '::1';
 };
+
+const resolvePtyWsUrl = (): string | null => {
+  const configuredUrl = ((import.meta as any).env?.VITE_PTY_WS_URL as string | undefined)?.trim();
+  if (configuredUrl) return configuredUrl;
+
+  const hostname = window.location.hostname || '127.0.0.1';
+  if (isLoopbackHostname(hostname)) {
+    return `ws://${hostname}:8787/pty`;
+  }
+
+  return null;
+};
+
 const PTY_WS_URL = resolvePtyWsUrl();
 const SIMULATED_COMMANDS = new Set(['help', 'ls', 'cd', 'pwd', 'cat', 'touch', 'mkdir', 'rm', 'echo', 'clear']);
 const LOCAL_RUNTIME_COMMANDS = new Set([
@@ -35,6 +43,7 @@ const LOCAL_RUNTIME_COMMANDS = new Set([
   'next',
   'python',
   'pip',
+  'dotnet',
   'bash',
   'sh',
   'pwsh',
@@ -208,6 +217,19 @@ export const TerminalView: React.FC<TerminalViewProps> = ({ terminalId }) => {
   };
 
   const tryConnectRealTerminal = (term: Terminal) => {
+    if (!PTY_WS_URL) {
+      const message = tt(
+        'Runtime Local indisponível neste domínio. O Cloudflare Pages não executa o servidor PTY. Abra o app em localhost ou configure VITE_PTY_WS_URL para uma ponte de runtime local/proxy segura.',
+        'Local Runtime is unavailable on this domain. Cloudflare Pages does not run the PTY server. Open the app on localhost or configure VITE_PTY_WS_URL to a secure local runtime bridge/proxy.'
+      );
+      useRuntimeModeStore.getState().setAvailability('unavailable');
+      useRuntimeModeStore.getState().appendBridgeLog(message);
+      useLocalRuntimeStore.getState().setBridgeStatus('error', message);
+      term.writeln(`\r\n\x1b[1;33m[Capy Runtime]\x1b[0m ${message}`);
+      prompt(term);
+      return;
+    }
+
     let resolved = false;
     let fallbackTimer: number | null = null;
     const announceFallback = (reason: string) => {
