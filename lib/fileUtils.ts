@@ -7,6 +7,11 @@ export const getLanguageFromFilename = (filename: string): string => {
     case 'js':
     case 'jsx':
       return 'javascript';
+    case 'cs':
+      return 'csharp';
+    case 'csproj':
+    case 'sln':
+      return 'xml';
     case 'css':
       return 'css';
     case 'html':
@@ -40,6 +45,8 @@ export const getFileIconInfo = (filename: string) => {
     
     // Special files
     if (filename === 'package.json') return { name: 'Package', color: 'text-red-400' };
+    if (filename.endsWith('.sln')) return { name: 'Boxes', color: 'text-purple-400' };
+    if (filename.endsWith('.csproj')) return { name: 'FileCode', color: 'text-purple-300' };
     if (filename.startsWith('.git')) return { name: 'GitBranch', color: 'text-red-400' };
     if (filename.includes('config') || filename.startsWith('.')) return { name: 'Settings', color: 'text-gray-400' };
     
@@ -50,6 +57,8 @@ export const getFileIconInfo = (filename: string) => {
       case 'js':
       case 'jsx':
         return { name: 'FileCode', color: 'text-yellow-400' };
+      case 'cs':
+        return { name: 'FileCode', color: 'text-purple-400' };
       case 'css':
       case 'scss':
       case 'less':

@@ -4,6 +4,7 @@ const WelcomeScreen = React.lazy(() => import('./components/layout/WelcomeScreen
 import { useWorkspaceStore } from './stores/workspaceStore';
 import { useOnboardingStore } from './features/onboarding/store/onboardingStore';
 import { registerDefaultCommands } from './core/commands/handlers/registerDefaultCommands';
+import { registerDotnetCommands } from './core/commands/handlers/registerDotnetCommands';
 import registerServiceWorker from './registerServiceWorker';
 
 const App: React.FC = () => {
@@ -13,6 +14,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     registerDefaultCommands();
+    registerDotnetCommands();
     initialize().then(() => {
       // Simulate a small delay for "checking resources" feel or just load fast
       setTimeout(() => setLoading(false), 500);
