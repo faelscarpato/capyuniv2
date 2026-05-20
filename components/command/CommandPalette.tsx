@@ -63,6 +63,10 @@ export const CommandPalette: React.FC = () => {
     { label: 'Workspace: Import Zip', action: () => fileInputRef.current?.click(), icon: 'Upload' },
     { label: tt('Runtime: Ativar Runtime Local', 'Runtime: Activate Local Runtime'), action: () => executeAppCommand('runtime.activateLocal'), icon: 'Terminal' },
     { label: tt('Runtime: Desconectar Runtime Local', 'Runtime: Disconnect Local Runtime'), action: () => executeAppCommand('runtime.disconnect'), icon: 'XCircle' },
+    { label: tt('.NET: Restaurar dependências', '.NET: Restore dependencies'), action: () => executeAppCommand('project.dotnetRestore'), icon: 'RefreshCw' },
+    { label: tt('.NET: Build C#', '.NET: Build C#'), action: () => executeAppCommand('project.dotnetBuild'), icon: 'Hammer' },
+    { label: tt('.NET: Rodar projeto C#', '.NET: Run C# project'), action: () => executeAppCommand('project.dotnetRun'), icon: 'Play' },
+    { label: tt('.NET: Testar projeto C#', '.NET: Test C# project'), action: () => executeAppCommand('project.dotnetTest'), icon: 'CheckCircle' },
     { label: tt('Controle de Código-Fonte: Atualizar', 'Source Control: Refresh'), action: () => executeAppCommand('sourceControl.refresh'), icon: 'RefreshCw' },
 
     // Templates
